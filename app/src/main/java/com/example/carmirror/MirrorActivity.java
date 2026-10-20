@@ -44,10 +44,6 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     surface.setOnTouchListener((v,e)->forward(e,surface.getX(),surface.getY()));
     root.setOnTouchListener((v,e)->forward(e,0,0));
     status=new TextView(this);status.setTextColor(Color.WHITE);status.setText("正在启动投屏…");root.addView(status);
-    LinearLayout navigation=new LinearLayout(this);
-    String[] labels={"返回","主页","最近任务"};int[] codes={4,3,187};
-    for(int i=0;i<codes.length;i++){final int code=codes[i];Button b=new Button(this);b.setText(labels[i]);b.setOnClickListener(v->submit(()->{if(writer!=null){writer.keycode(0,code);writer.keycode(1,code);}}));navigation.addView(b);}
-    FrameLayout.LayoutParams nav=new FrameLayout.LayoutParams(-2,-2,Gravity.BOTTOM|Gravity.CENTER_HORIZONTAL);root.addView(navigation,nav);
     exit=new ExitHandle(this,()->{closeSession();finish();});int size=(int)(64*getResources().getDisplayMetrics().density);FrameLayout.LayoutParams handle=new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.RIGHT);root.addView(exit,handle);
     // Gravity only establishes the initial position; explicit x/y then support clamped dragging.
     root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{layoutVideo();exit.setX(Math.max(0,Math.min(root.getWidth()-exit.getWidth(),exit.getX())));exit.setY(Math.max(0,Math.min(root.getHeight()-exit.getHeight(),exit.getY())));});
