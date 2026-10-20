@@ -7,9 +7,10 @@ import com.example.carmirror.Endpoint;
 
 /** Process-scoped ADB owner: activities borrow one client; explicit Disconnect closes it. */
 public final class ConnectionOwner {
-  private static AdbSession session;
-  private static boolean connected;
-  private static String message="未连接";
+  private static volatile AdbSession session;
+  private static long connectionEpoch;
+  private static volatile boolean connected;
+  private static volatile String message="未连接";
   private static AdbGateway.Listener observer;
   private ConnectionOwner(){}
   public static synchronized AdbSession get(Context context){
@@ -23,9 +24,51 @@ public final class ConnectionOwner {
   }
   public static boolean isConnected(){return connected;}
   public static String message(){return message;}
-  public static void observe(AdbGateway.Listener listener){observer=listener;}
-  public static void connect(Endpoint endpoint){session.connect(endpoint,(state,text)->{
-    connected=state==ConnectionState.CONNECTED;message=text;
-    if(observer!=null)observer.onState(state,text);
-  });}
+  public static synchronized void observe(AdbGateway.Listener listener){observer=listener;}
+  private static void update(ConnectionState state,String text){
+    final AdbGateway.Listener target;
+    synchronized(ConnectionOwner.class){
+      connected=state==ConnectionState.CONNECTED;
+      message=text;
+      target=observer;
+    }
+    if(target!=null)target.onState(state,text);
+  }
+  public static synchronized void connect(Endpoint endpoint){
+    connectionEpoch++;
+    update(ConnectionState.CONNECTING,"正在连接 " + endpoint.serial());
+    session.connect(endpoint,ConnectionOwner::update);
+  }
+  public static synchronized void disconnect(){
+    connectionEpoch++;
+    update(ConnectionState.DISCONNECTED,"已断开");
+    session.disconnect();
+  }
+  /** A projection stream can fail while ADB remains usable. Probe it before changing device state. */
+  public static void checkAfterStreamFailure(AdbSession expected){
+    final long epoch;
+    synchronized(ConnectionOwner.class){
+      if(!isConnected() || session!=expected)return;
+      epoch=connectionEpoch;
+    }
+    Thread probe=new Thread(()->{
+      try{
+        CommandResult result=expected.shell("true",4000);
+        if(result.timedOut()){
+          synchronized(ConnectionOwner.class){
+            if(session==expected && connectionEpoch==epoch && isConnected()){
+              connected=false;
+              message="ADB 连接中断：设备探测超时，请重新连接";
+              connectionEpoch++;
+              expected.disconnect();
+            }
+          }
+        }
+      }catch(java.io.IOException ignored){
+        // AdbSession reports transport failures through its installed listener.
+      }
+    },"adb-stream-probe");
+    probe.setDaemon(true);
+    probe.start();
+  }
 }

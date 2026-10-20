@@ -20,7 +20,7 @@ import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-/** Connection editor; ADB transport is connected in the next implementation task. */
+/** Connection editor and simple ADB command console. */
 public class MainActivity extends Activity {
   private static final String DEFAULT_HOST = "192.168.42.147";
   private static final String DEFAULT_PORT = "5555";
@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
     status.setText("未连接");
     status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     content.addView(status);
-    button(content, "断开", view -> adb.disconnect());
+    button(content, "断开", view -> ConnectionOwner.disconnect());
     button(content, "开始投屏", view -> {
       if (!ConnectionOwner.isConnected()) { status.setText("请先连接车机"); return; }
       startActivity(new android.content.Intent(this, MirrorActivity.class));
@@ -142,7 +142,7 @@ public class MainActivity extends Activity {
     else status.setText("已保存：" + endpoint.serial());
   }
 
-  /** Hook for the ADB session integration. Never runs until endpoint validation succeeds. */
+  /** Never runs until endpoint validation succeeds. */
   protected void onEndpointSelected(Endpoint endpoint) {
     selectedEndpoint = endpoint;
     ConnectionOwner.connect(endpoint);
@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
   private void executeCommand(String input) {
     String value = input.trim();
     if (value.equals("adb disconnect")) {
-      adb.disconnect();
+      ConnectionOwner.disconnect();
       return;
     }
     if (value.equals("adb connect")) {
