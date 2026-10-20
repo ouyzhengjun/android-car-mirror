@@ -15,6 +15,10 @@ import com.example.carmirror.scrcpy.VideoPacketReader.VideoPacket;
  * Output is drained continuously even when the remote screen stops producing frames. */
 public final class VideoDecoder implements Closeable {
   private static final int CAPACITY=3;
+  // Frames arrive in bursts over ADB; render them on their presentation timeline instead
+  // of on arrival so motion stays even. The delay absorbs normal jitter.
+  private static final long PLAYOUT_DELAY_US=50000;
+  private long basePtsUs=-1,baseWallUs;
   private final ArrayDeque<VideoPacket> queue=new ArrayDeque<>();
   private final Thread worker;
   private Surface surface;
@@ -73,7 +77,24 @@ public final class VideoDecoder implements Closeable {
     catch(Exception e){failure=e instanceof IOException?(IOException)e:new IOException("Video decoder failed",e);}
     finally{release();synchronized(this){closed=true;queue.clear();notifyAll();}}
   }
-  private void drain(){if(codec==null)return;MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();int index;while((index=codec.dequeueOutputBuffer(info,0))>=0)codec.releaseOutputBuffer(index,true);}
-  private void release(){if(codec!=null){try{codec.stop();}catch(RuntimeException ignored){}try{codec.release();}finally{codec=null;}}}
+  private void drain(){
+    if(codec==null)return;
+    MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();int index;
+    while((index=codec.dequeueOutputBuffer(info,0))>=0){
+      pace(info.presentationTimeUs);
+      codec.releaseOutputBuffer(index,true);
+    }
+  }
+  /** Sleeps until this frame's position on the playback timeline. */
+  private void pace(long ptsUs){
+    long now=System.nanoTime()/1000;
+    if(basePtsUs<0||ptsUs<basePtsUs){basePtsUs=ptsUs;baseWallUs=now+PLAYOUT_DELAY_US;}
+    long target=baseWallUs+(ptsUs-basePtsUs);
+    // Reset after a long idle gap or when the timeline jumps ahead of real time.
+    if(target>now+250000||target<now-150000){basePtsUs=ptsUs;baseWallUs=now+PLAYOUT_DELAY_US;target=baseWallUs;}
+    long waitUs=target-now;
+    if(waitUs>2000)try{Thread.sleep(waitUs/1000,(int)(waitUs%1000)*1000);}catch(InterruptedException e){Thread.currentThread().interrupt();}
+  }
+  private void release(){basePtsUs=-1;if(codec!=null){try{codec.stop();}catch(RuntimeException ignored){}try{codec.release();}finally{codec=null;}}}
   @Override public void close(){synchronized(this){closed=true;queue.clear();notifyAll();}worker.interrupt();if(Thread.currentThread()!=worker){try{worker.join(2000);}catch(InterruptedException e){Thread.currentThread().interrupt();}}}
 }
