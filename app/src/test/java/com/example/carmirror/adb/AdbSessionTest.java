@@ -1,0 +1,245 @@
+package com.example.carmirror.adb;
+
+import static org.junit.Assert.*;
+
+import com.example.carmirror.Endpoint;
+import java.io.*;
+import java.util.*;
+import java.util.concurrent.*;
+import org.junit.Test;
+
+public class AdbSessionTest {
+  static class Transport implements AdbSession.Transport {
+    boolean closed;
+    String destination;
+    AdbChannel channel;
+
+    public boolean connect(long timeout) {
+      return true;
+    }
+
+    public AdbChannel open(String d) {
+      destination = d;
+      return channel;
+    }
+
+    public void close() {
+      closed = true;
+    }
+  }
+
+  @Test
+  public void connectsThroughAuthorizationAndReplacesOldTransport() throws Exception {
+    List<Transport> transports = new ArrayList<>();
+    List<ConnectionState> states = new CopyOnWriteArrayList<>();
+    AdbSession session =
+        new AdbSession(
+            e -> {
+              Transport t = new Transport();
+              transports.add(t);
+              return t;
+            },
+            Runnable::run);
+    CountDownLatch connected = new CountDownLatch(2);
+    AdbGateway.Listener listener =
+        (s, m) -> {
+          states.add(s);
+          if (s == ConnectionState.CONNECTED) connected.countDown();
+        };
+    session.connect(Endpoint.parse("127.0.0.1", "5555"), listener);
+    while (transports.size() < 1 || !states.contains(ConnectionState.CONNECTED)) Thread.sleep(5);
+    session.connect(Endpoint.parse("127.0.0.1", "5556"), listener);
+    assertTrue(connected.await(2, TimeUnit.SECONDS));
+    assertTrue(transports.get(0).closed);
+    assertTrue(states.contains(ConnectionState.AUTHORIZING));
+    session.disconnect();
+  }
+
+  @Test
+  public void shellUsesShortServiceAndReturnsExitCode() throws Exception {
+    Transport t = new Transport();
+    ByteArrayOutputStream sent = new ByteArrayOutputStream();
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream("hello\n__CAR_MIRROR_EXIT__7\n".getBytes("UTF-8")),
+            sent,
+            () -> {});
+    AdbSession s = connected(t);
+    CommandResult r = s.shell("echo hello", 1000);
+    assertEquals("shell:", t.destination);
+    assertEquals(7, r.exitCode());
+    assertFalse(r.timedOut());
+    assertTrue(r.output().contains("hello"));
+    assertTrue(sent.toString("UTF-8").contains("echo hello"));
+    s.disconnect();
+  }
+
+  @Test
+  public void timeoutClosesBlockedChannel() throws Exception {
+    Transport t = new Transport();
+    CountDownLatch closed = new CountDownLatch(1);
+    InputStream blocked =
+        new InputStream() {
+          public int read() throws IOException {
+            try {
+              closed.await();
+            } catch (InterruptedException e) {
+              throw new IOException(e);
+            }
+            return -1;
+          }
+        };
+    t.channel = new AdbChannel(blocked, new ByteArrayOutputStream(), closed::countDown);
+    AdbSession s = connected(t);
+    assertTrue(s.shell("sleep 99", 30).timedOut());
+    assertEquals(0, closed.getCount());
+    s.disconnect();
+  }
+
+  @Test
+  public void disconnectClosesOpenChannels() throws Exception {
+    Transport t = new Transport();
+    CountDownLatch closed = new CountDownLatch(1);
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), closed::countDown);
+    AdbSession s = connected(t);
+    s.openService("localabstract:scrcpy");
+    s.disconnect();
+    assertTrue(closed.await(1, TimeUnit.SECONDS));
+  }
+
+  @Test
+  public void failedAuthorizationClosesTransportAndReportsError() throws Exception {
+    Transport t =
+        new Transport() {
+          public boolean connect(long timeout) {
+            return false;
+          }
+        };
+    CountDownLatch failed = new CountDownLatch(1);
+    AdbSession s = new AdbSession(e -> t, Runnable::run);
+    s.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, m) -> {
+          if (state == ConnectionState.ERROR) failed.countDown();
+        });
+    assertTrue(failed.await(2, TimeUnit.SECONDS));
+    assertTrue(t.closed);
+    s.disconnect();
+  }
+
+  @Test
+  public void commandStreamFailureReportsError() throws Exception {
+    Transport t = new Transport();
+    t.channel =
+        new AdbChannel(
+            new InputStream() {
+              public int read() throws IOException {
+                throw new IOException("lost transport");
+              }
+            },
+            new ByteArrayOutputStream(),
+            () -> {});
+    CountDownLatch ready = new CountDownLatch(1), failed = new CountDownLatch(1);
+    AdbSession s = new AdbSession(e -> t, Runnable::run);
+    s.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, m) -> {
+          if (state == ConnectionState.CONNECTED) ready.countDown();
+          if (state == ConnectionState.ERROR) failed.countDown();
+        });
+    assertTrue(ready.await(2, TimeUnit.SECONDS));
+    try {
+      s.shell("id", 500);
+      fail("expected failure");
+    } catch (IOException expected) {
+    }
+    assertTrue(failed.await(1, TimeUnit.SECONDS));
+    assertTrue(t.closed);
+    s.disconnect();
+  }
+
+  @Test
+  public void rejectsMultibyteServiceNamesBeforeCallingLibrary() throws Exception {
+    Transport t = new Transport();
+    AdbSession s = connected(t);
+    try {
+      s.openService("localabstract:车机");
+      fail("expected invalid destination");
+    } catch (IOException expected) {
+    }
+    assertNull(t.destination);
+    s.disconnect();
+  }
+
+  @Test
+  public void pushWritesSyncFramingAndHonorsRemoteFailure() throws Exception {
+    Transport t = new Transport();
+    ByteArrayOutputStream sent = new ByteArrayOutputStream();
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream(new byte[] {'O', 'K', 'A', 'Y', 0, 0, 0, 0}), sent, () -> {});
+    AdbSession s = connected(t);
+    s.push(new ByteArrayInputStream(new byte[] {1, 2, 3}), 3, "/data/local/tmp/test");
+    assertEquals("sync:", t.destination);
+    String bytes = sent.toString("ISO-8859-1");
+    assertTrue(bytes.startsWith("SEND"));
+    assertTrue(bytes.contains("/data/local/tmp/test,33206"));
+    assertTrue(bytes.contains("DATA"));
+    assertTrue(bytes.contains("DONE"));
+    s.disconnect();
+  }
+
+  @Test
+  public void credentialsSurviveStoreRecreation() throws Exception {
+    File root = java.nio.file.Files.createTempDirectory("adb-keys").toFile();
+    try {
+      AdbKeyStore.Credentials first = new AdbKeyStore(root).load();
+      AdbKeyStore.Credentials second = new AdbKeyStore(root).load();
+      assertArrayEquals(first.privateKey.getEncoded(), second.privateKey.getEncoded());
+      assertArrayEquals(first.certificate.getEncoded(), second.certificate.getEncoded());
+      assertEquals("RSA", first.privateKey.getAlgorithm());
+    } finally {
+      for (File f : new File(root, "adb-identity").listFiles()) f.delete();
+      new File(root, "adb-identity").delete();
+      root.delete();
+    }
+  }
+
+  @Test
+  public void commandTimeoutIncludesServiceOpen() throws Exception {
+    Transport t =
+        new Transport() {
+          @Override
+          public AdbChannel open(String destination) {
+            try {
+              new CountDownLatch(1).await();
+            } catch (InterruptedException expected) {
+              return null;
+            }
+            return null;
+          }
+        };
+    AdbSession s = connected(t);
+    ExecutorService worker = Executors.newSingleThreadExecutor();
+    try {
+      assertTrue(worker.submit(() -> s.shell("id", 30)).get(500, TimeUnit.MILLISECONDS).timedOut());
+    } finally {
+      s.disconnect();
+      worker.shutdownNow();
+    }
+  }
+
+  private AdbSession connected(Transport t) throws Exception {
+    AdbSession s = new AdbSession(e -> t, Runnable::run);
+    CountDownLatch ready = new CountDownLatch(1);
+    s.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, m) -> {
+          if (state == ConnectionState.CONNECTED) ready.countDown();
+        });
+    assertTrue(ready.await(2, TimeUnit.SECONDS));
+    return s;
+  }
+}
