@@ -93,6 +93,7 @@ public final class AdbSession implements AdbGateway {
   }
 
   private void fail(long token, Exception error) {
+    android.util.Log.e("CarMirrorADB", "ADB session failed", error);
     Transport failed;
     List<AdbChannel> stale;
     synchronized (this) {
@@ -104,7 +105,9 @@ public final class AdbSession implements AdbGateway {
     }
     close(failed);
     for (AdbChannel c : stale) close(c);
-    state(token, ConnectionState.ERROR, String.valueOf(error.getMessage()));
+    String detail = error.getMessage();
+    if (detail == null || detail.trim().isEmpty()) detail = error.getClass().getSimpleName();
+    state(token, ConnectionState.ERROR, "ADB 连接失败：" + detail);
   }
 
   public void disconnect() {
