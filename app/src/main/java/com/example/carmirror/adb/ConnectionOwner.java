@@ -15,12 +15,23 @@ public final class ConnectionOwner {
   private ConnectionOwner(){}
   public static synchronized AdbSession get(Context context){
     if(session==null){
+      if((context.getApplicationInfo().flags&android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE)!=0)redirectStderr();
       java.security.Security.insertProviderAt(org.conscrypt.Conscrypt.newProvider(),1);
       AdbKeyStore keys=new AdbKeyStore(context.getApplicationContext().getFilesDir());
       Handler main=new Handler(Looper.getMainLooper());
       session=new AdbSession(endpoint->new LibAdbTransport(endpoint,keys),main::post);
     }
     return session;
+  }
+  /** App processes send stderr to /dev/null, hiding library thread failures from logcat. */
+  private static void redirectStderr(){
+    System.setErr(new java.io.PrintStream(new java.io.OutputStream(){
+      private final StringBuilder pending=new StringBuilder();
+      @Override public synchronized void write(int b){
+        if(b=='\n'){android.util.Log.e("SystemErr",pending.toString());pending.setLength(0);}
+        else if(b!='\r')pending.append((char)b);
+      }
+    },true));
   }
   public static boolean isConnected(){return connected;}
   public static String message(){return message;}

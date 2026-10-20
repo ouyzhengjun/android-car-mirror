@@ -14,6 +14,10 @@ public final class ScrcpyLauncher implements ScrcpySession {
     InputStream open() throws IOException;
   }
 
+  // Some head units mount /data/local/tmp without write access for the shell user,
+  // so the server jar falls back to shared storage where adbd can still write.
+  private static final String[] REMOTE_DIRS = {"/data/local/tmp", "/sdcard"};
+
   private final ServerSource source;
   private final long size, timeoutMs;
   private Run active;
@@ -91,7 +95,13 @@ public final class ScrcpyLauncher implements ScrcpySession {
     } catch (CancellationException e) {
       throw new IOException("scrcpy startup canceled", e);
     } catch (ExecutionException e) {
-      throw new IOException("scrcpy startup failed", e.getCause());
+      Throwable cause = e.getCause();
+      String detail = cause == null ? null : cause.getMessage();
+      throw new IOException(
+          detail == null || detail.trim().isEmpty()
+              ? "scrcpy startup failed"
+              : "scrcpy startup failed: " + detail,
+          cause);
     } finally {
       if (!ready) stopRun(run);
     }
@@ -99,10 +109,23 @@ public final class ScrcpyLauncher implements ScrcpySession {
 
   private Streams launch(AdbGateway adb, Run run) throws Exception {
     String scid = String.format(Locale.ROOT, "%08x", new SecureRandom().nextInt() & 0x7fffffff);
-    String remote = "/data/local/tmp/scrcpy-server-" + scid + ".jar";
-    try (InputStream in = run.own(source.open())) {
-      adb.push(in, size, remote);
+    String remote = null;
+    IOException uploadFailure = null;
+    for (String dir : REMOTE_DIRS) {
+      String candidate = dir + "/scrcpy-server-" + scid + ".jar";
+      try (InputStream in = run.own(source.open())) {
+        adb.push(in, size, candidate);
+        remote = candidate;
+        break;
+      } catch (IOException e) {
+        uploadFailure = e;
+      }
     }
+    if (remote == null)
+      throw new IOException(
+          "server upload failed: "
+              + (uploadFailure.getMessage() == null ? "unknown" : uploadFailure.getMessage()),
+          uploadFailure);
     AdbChannel process = run.own(adb.openService("shell:"));
     String command =
         "stty -echo 2>/dev/null; CLASSPATH="
@@ -117,8 +140,11 @@ public final class ScrcpyLauncher implements ScrcpySession {
     run.workers.submit(
         () -> {
           try {
-            byte[] b = new byte[4096];
-            while (process.input().read(b) != -1) {}
+            BufferedReader reader =
+                new BufferedReader(
+                    new InputStreamReader(process.input(), StandardCharsets.UTF_8));
+            String line;
+            while ((line = reader.readLine()) != null) logServer(line);
           } catch (IOException ignored) {
           }
         });
@@ -157,6 +183,14 @@ public final class ScrcpyLauncher implements ScrcpySession {
       if (active == run) active = null;
     }
     run.stop();
+  }
+
+  private static void logServer(String line) {
+    if (android.os.Build.VERSION.SDK_INT == 0) return;
+    try {
+      android.util.Log.i("ScrcpyServer", line.length() > 300 ? line.substring(0, 300) : line);
+    } catch (Throwable ignored) {
+    }
   }
 
   private static void close(Closeable c) {

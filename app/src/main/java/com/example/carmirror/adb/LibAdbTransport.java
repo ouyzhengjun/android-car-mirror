@@ -34,7 +34,22 @@ public final class LibAdbTransport implements AdbSession.Transport {
     if (android.os.Looper.myLooper() == android.os.Looper.getMainLooper())
       throw new IllegalStateException("ADB I/O must run on a worker thread");
     AdbStream stream = connection.open(destination);
-    return new AdbChannel(stream.openInputStream(), stream.openOutputStream(), stream);
+    return new AdbChannel(openInput(stream), stream.openOutputStream(), stream);
+  }
+
+  /**
+   * libadb's AdbInputStream.read() returns the raw signed byte, so any value at or above
+   * 0x80 arrives negative and callers mistake it for EOF. Multi-byte reads return counts
+   * and are unaffected.
+   */
+  private static InputStream openInput(AdbStream stream) {
+    return new FilterInputStream(stream.openInputStream()) {
+      @Override
+      public int read() throws IOException {
+        int value = super.read();
+        return value < -1 ? value & 0xff : value;
+      }
+    };
   }
 
   public void close() throws IOException {

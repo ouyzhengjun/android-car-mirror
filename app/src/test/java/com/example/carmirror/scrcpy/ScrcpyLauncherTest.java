@@ -203,6 +203,53 @@ public class ScrcpyLauncherTest {
   }
 
   @Test
+  public void fallsBackToSharedStorageWhenTmpIsNotWritable() throws Exception {
+    List<String> attempts = new CopyOnWriteArrayList<>();
+    Device d =
+        new Device() {
+          @Override
+          public void push(InputStream in, long size, String path) throws IOException {
+            attempts.add(path);
+            if (path.startsWith("/data/local/tmp/")) throw new IOException("Permission denied");
+            byte[] b = new byte[(int) size];
+            assertEquals(size, in.read(b));
+            events.add("push:" + path);
+          }
+        };
+    ScrcpySession s = launcher(1000);
+    try {
+      ScrcpySession.Streams streams = s.start(d);
+      assertNotNull(streams);
+    } finally {
+      s.stop();
+    }
+    assertEquals(2, attempts.size());
+    assertTrue(attempts.get(0).startsWith("/data/local/tmp/scrcpy-server-"));
+    assertTrue(attempts.get(1).matches("/sdcard/scrcpy-server-[0-7][0-9a-f]{7}\\.jar"));
+    assertTrue(d.command.toString("UTF-8").contains("CLASSPATH=" + attempts.get(1)));
+  }
+
+  @Test
+  public void reportsUploadReasonWhenNoRemoteDirectoryIsWritable() throws Exception {
+    Device d =
+        new Device() {
+          @Override
+          public void push(InputStream in, long size, String path) throws IOException {
+            throw new IOException("Permission denied");
+          }
+        };
+    ScrcpySession s = launcher(1000);
+    try {
+      s.start(d);
+      fail("upload failure expected");
+    } catch (IOException expected) {
+      assertTrue(expected.getMessage(), expected.getMessage().contains("Permission denied"));
+    }
+    assertTrue(d.events.isEmpty());
+    s.stop();
+  }
+
+  @Test
   public void bundledOfficialServerMatchesPinnedDigest() throws Exception {
     java.security.MessageDigest sha = java.security.MessageDigest.getInstance("SHA-256");
     File asset = new File("src/main/assets/scrcpy-server-v4.0");
