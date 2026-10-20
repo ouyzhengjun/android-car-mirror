@@ -166,7 +166,10 @@ public final class AdbSession implements AdbGateway {
       }
       return channel;
     } catch (Exception e) {
-      fail(token, e);
+      // A forward-mode scrcpy server may not have bound its per-session socket yet.
+      // libadb uses ConnectException specifically for an OPEN rejected by the peer.
+      if (!(e instanceof java.net.ConnectException
+          && destination.matches("localabstract:scrcpy_[0-7][0-9a-f]{7}"))) fail(token, e);
       throw new IOException(e);
     }
   }

@@ -18,7 +18,7 @@ public class AdbSessionTest {
       return true;
     }
 
-    public AdbChannel open(String d) {
+    public AdbChannel open(String d) throws IOException {
       destination = d;
       return channel;
     }
@@ -317,6 +317,77 @@ public class AdbSessionTest {
       assertEquals(0, closed.getCount());
     } finally {
       session.disconnect();
+    }
+  }
+
+  @Test
+  public void scrcpySocketRefusalKeepsSharedTransportForRetry() throws Exception {
+    Transport t =
+        new Transport() {
+          boolean refused;
+
+          public AdbChannel open(String destination) throws IOException {
+            if (!refused) {
+              refused = true;
+              throw new java.net.ConnectException("not listening");
+            }
+            return new AdbChannel(
+                new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), () -> {});
+          }
+        };
+    AdbSession s = connected(t);
+    try {
+      try {
+        s.openService("localabstract:scrcpy_12345678");
+        fail();
+      } catch (IOException expected) {
+      }
+      assertFalse(t.closed);
+      s.openService("localabstract:scrcpy_12345678").close();
+    } finally {
+      s.disconnect();
+    }
+  }
+
+  @Test
+  public void scrcpyTransportFailureStillDisconnects() throws Exception {
+    Transport t =
+        new Transport() {
+          public AdbChannel open(String destination) throws IOException {
+            throw new IOException("transport lost");
+          }
+        };
+    AdbSession s = connected(t);
+    try {
+      try {
+        s.openService("localabstract:scrcpy_12345678");
+        fail();
+      } catch (IOException expected) {
+      }
+      assertTrue(t.closed);
+    } finally {
+      s.disconnect();
+    }
+  }
+
+  @Test
+  public void shellRefusalStillDisconnects() throws Exception {
+    Transport t =
+        new Transport() {
+          public AdbChannel open(String destination) throws IOException {
+            throw new java.net.ConnectException("shell refused");
+          }
+        };
+    AdbSession s = connected(t);
+    try {
+      try {
+        s.openService("shell:");
+        fail();
+      } catch (IOException expected) {
+      }
+      assertTrue(t.closed);
+    } finally {
+      s.disconnect();
     }
   }
 
