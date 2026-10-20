@@ -93,7 +93,8 @@ public final class AdbSession implements AdbGateway {
   }
 
   private void fail(long token, Exception error) {
-    android.util.Log.e("CarMirrorADB", "ADB session failed", error);
+    if (android.os.Build.VERSION.SDK_INT > 0)
+      android.util.Log.e("CarMirrorADB", "ADB session failed", error);
     Transport failed;
     List<AdbChannel> stale;
     synchronized (this) {
