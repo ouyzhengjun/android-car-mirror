@@ -13,6 +13,20 @@ public final class TouchController {
  public TouchController(ControlMessageWriter writer){this.writer=Objects.requireNonNull(writer);}
  public synchronized boolean onTouch(TouchSample sample,VideoGeometry geometry)throws IOException {
   Objects.requireNonNull(sample);
+  if(geometry!=null&&!active.isEmpty()) {
+   Point first=active.values().iterator().next();
+   if(first.width!=geometry.streamWidth||first.height!=geometry.streamHeight) {
+    // v4.0 rejects stale frame dimensions, including on UP. Release every
+    // pointer in the current stream coordinate system before accepting a new gesture.
+    for(Map.Entry<Long,Point> entry:active.entrySet()) {
+     Point old=entry.getValue();
+     Point current=new Point(Math.min(geometry.streamWidth-1,Math.round((float)old.x*geometry.streamWidth/old.width)),
+       Math.min(geometry.streamHeight-1,Math.round((float)old.y*geometry.streamHeight/old.height)),geometry.streamWidth,geometry.streamHeight);
+     release(entry.getKey(),current);
+    }
+    active.clear();return true;
+   }
+  }
   if(sample.action==TouchSample.CANCEL){
    boolean handled=!active.isEmpty();
    for(Map.Entry<Long,Point> entry:active.entrySet())release(entry.getKey(),entry.getValue());
@@ -26,8 +40,8 @@ public final class TouchController {
   if(down&&previous!=null)return false;
   if(!down&&previous==null)return false;
   boolean valid=geometry.contains(sample.x,sample.y)&&(!Float.isNaN(sample.pressure)&&!Float.isInfinite(sample.pressure));
-  // Release before changing geometry or leaving content, avoiding a stuck remote finger.
-  if(previous!=null&&(!valid||previous.width!=geometry.streamWidth||previous.height!=geometry.streamHeight)){
+  // Release before leaving content, avoiding a stuck remote finger.
+  if(previous!=null&&!valid){
    release(sample.pointerId,previous);active.remove(sample.pointerId);return true;
   }
   if(!valid)return false;

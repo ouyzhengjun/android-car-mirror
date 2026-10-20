@@ -33,4 +33,21 @@ public class TouchControllerTest {
   assertEquals(1,out.toByteArray()[97]);assertEquals(1,out.toByteArray()[129]);
   assertFalse(send(2,10,10,10,g)); assertFalse(send(3,0,0,0,g));
  }
+ @Test public void geometryChangeReleasesEveryPointerWithCurrentDimensions()throws Exception {
+  VideoGeometry oldGeometry=new VideoGeometry(100,200,0,0,100,200);
+  send(0,10,25,100,oldGeometry);send(5,12,99,199,oldGeometry);
+  assertTrue(send(2,10,100,25,new VideoGeometry(200,100,0,0,200,100)));
+  assertEquals(128,out.size());
+  ByteBuffer bytes=ByteBuffer.wrap(out.toByteArray());
+  for(int event=2;event<4;event++) {
+   assertEquals(1,bytes.get(event*32+1));
+   assertEquals(200,bytes.getShort(event*32+18)&65535);
+   assertEquals(100,bytes.getShort(event*32+20)&65535);
+   assertEquals(0,bytes.getShort(event*32+22));
+  }
+  assertEquals(10,bytes.getLong(66));assertEquals(50,value(2,10));assertEquals(50,value(2,14));
+  assertEquals(12,bytes.getLong(98));assertEquals(198,value(3,10));assertEquals(99,value(3,14));
+  assertFalse(send(2,12,50,50,new VideoGeometry(200,100,0,0,200,100)));
+  assertFalse(send(3,0,0,0,null));
+ }
 }
