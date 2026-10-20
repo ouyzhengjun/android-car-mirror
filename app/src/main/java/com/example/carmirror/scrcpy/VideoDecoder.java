@@ -23,7 +23,7 @@ public final class VideoDecoder implements Closeable {
   private volatile IOException failure;
   private volatile int width,height;
   private MediaCodec codec;
-  private VideoPacket config;
+  private AvcConfig config;
   private boolean waitForKey=true;
   public VideoDecoder(){worker=new Thread(this::run,"scrcpy-decoder");worker.start();}
   /** null detaches the surface. A new surface recreates the codec on API 21 too. */
@@ -48,10 +48,11 @@ public final class VideoDecoder implements Closeable {
         if(pending!=null&&pending.isSession()){
           release();width=pending.width;height=pending.height;config=null;waitForKey=true;pending=null;continue;
         }
-        if(pending!=null&&pending.config){config=pending;release();waitForKey=true;pending=null;continue;}
+        if(pending!=null&&pending.config){config=AvcConfig.parse(pending.data);release();waitForKey=true;pending=null;continue;}
         if(codec==null&&target!=null&&target.isValid()&&width>0&&config!=null){
           MediaFormat format=MediaFormat.createVideoFormat("video/avc",width,height);
-          format.setByteBuffer("csd-0",ByteBuffer.wrap(config.data));
+          format.setByteBuffer("csd-0",ByteBuffer.wrap(config.sps));
+          format.setByteBuffer("csd-1",ByteBuffer.wrap(config.pps));
           format.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE,VideoPacketReader.MAX_PACKET_SIZE);
           if(Build.VERSION.SDK_INT>=30)format.setInteger("low-latency",1);
           codec=MediaCodec.createDecoderByType("video/avc");codec.configure(format,target,null,0);codec.start();
