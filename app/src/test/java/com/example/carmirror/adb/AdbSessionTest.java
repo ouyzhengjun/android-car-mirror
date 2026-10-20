@@ -391,6 +391,156 @@ public class AdbSessionTest {
     }
   }
 
+  @Test
+  public void blockedFactoryTimesOutAndLateTransportCannotReplaceNewConnection() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+    CountDownLatch error = new CountDownLatch(1), ready = new CountDownLatch(1);
+    Transport late = new Transport(), replacement = new Transport();
+    java.util.concurrent.atomic.AtomicInteger created = new java.util.concurrent.atomic.AtomicInteger();
+    AdbSession session =
+        new AdbSession(
+            endpoint -> {
+              if (created.getAndIncrement() == 0) {
+                entered.countDown();
+                while (release.getCount() != 0) {
+                  try {
+                    release.await();
+                  } catch (InterruptedException ignored) {
+                    // Model a library socket constructor that does not respond to interruption.
+                  }
+                }
+                return late;
+              }
+              return replacement;
+            },
+            Runnable::run,
+            60);
+    session.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, message) -> {
+          if (state == ConnectionState.ERROR) error.countDown();
+        });
+    assertTrue(entered.await(1, TimeUnit.SECONDS));
+    assertTrue("factory creation must have a deadline", error.await(1, TimeUnit.SECONDS));
+    session.connect(
+        Endpoint.parse("127.0.0.1", "5556"),
+        (state, message) -> {
+          if (state == ConnectionState.CONNECTED) ready.countDown();
+        });
+    assertTrue(ready.await(1, TimeUnit.SECONDS));
+    release.countDown();
+    long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
+    while (!late.closed && System.nanoTime() < deadline) Thread.sleep(5);
+    assertTrue("late factory result must be closed", late.closed);
+    assertFalse("new connection must remain open", replacement.closed);
+    session.disconnect();
+  }
+
+  @Test
+  public void authorizationTimeoutReportsBeforeSlowTransportClose() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+    CountDownLatch error = new CountDownLatch(1);
+    Transport transport =
+        new Transport() {
+          @Override
+          public boolean connect(long timeout) {
+            entered.countDown();
+            while (release.getCount() != 0) {
+              try {
+                release.await();
+              } catch (InterruptedException ignored) {
+              }
+            }
+            return true;
+          }
+
+          @Override
+          public void close() {
+            while (release.getCount() != 0) {
+              try {
+                release.await();
+              } catch (InterruptedException ignored) {
+              }
+            }
+            super.close();
+          }
+        };
+    AdbSession session = new AdbSession(endpoint -> transport, Runnable::run, 60);
+    session.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, message) -> {
+          if (state == ConnectionState.ERROR) error.countDown();
+        });
+    try {
+      assertTrue(entered.await(1, TimeUnit.SECONDS));
+      assertTrue("timeout UI must not wait for a stuck close", error.await(1, TimeUnit.SECONDS));
+    } finally {
+      release.countDown();
+      session.disconnect();
+    }
+  }
+
+  @Test
+  public void commandDuringAuthorizationDoesNotClosePendingTransport() throws Exception {
+    CountDownLatch entered = new CountDownLatch(1), release = new CountDownLatch(1);
+    CountDownLatch ready = new CountDownLatch(1), error = new CountDownLatch(1);
+    Transport transport =
+        new Transport() {
+          @Override
+          public boolean connect(long timeout) {
+            entered.countDown();
+            try {
+              release.await();
+            } catch (InterruptedException e) {
+              return false;
+            }
+            return true;
+          }
+        };
+    AdbSession session = new AdbSession(endpoint -> transport, Runnable::run);
+    session.connect(
+        Endpoint.parse("127.0.0.1", "5555"),
+        (state, message) -> {
+          if (state == ConnectionState.CONNECTED) ready.countDown();
+          if (state == ConnectionState.ERROR) error.countDown();
+        });
+    assertTrue(entered.await(1, TimeUnit.SECONDS));
+    try {
+      session.shell("id", 500);
+      fail("command should be rejected until handshake completes");
+    } catch (IOException expected) {
+      assertTrue(expected.getMessage().contains("正在连接"));
+    }
+    assertNull("transport.open must not run during handshake", transport.destination);
+    assertFalse(transport.closed);
+    assertEquals(1, error.getCount());
+    release.countDown();
+    assertTrue(ready.await(1, TimeUnit.SECONDS));
+    assertFalse(transport.closed);
+    session.disconnect();
+  }
+
+  @Test
+  public void excessiveCommandOutputClosesOnlyItsChannel() throws Exception {
+    Transport transport = new Transport();
+    CountDownLatch channelClosed = new CountDownLatch(1);
+    transport.channel =
+        new AdbChannel(
+            new ByteArrayInputStream(new byte[4 * 1024 * 1024 + 1]),
+            new ByteArrayOutputStream(),
+            channelClosed::countDown);
+    AdbSession session = connected(transport);
+    try {
+      session.shell("yes", 3000);
+      fail("expected bounded output error");
+    } catch (IOException expected) {
+      assertTrue(expected.getMessage().contains("超过 4 MiB"));
+    }
+    assertTrue(channelClosed.await(1, TimeUnit.SECONDS));
+    assertFalse("local output limit must preserve healthy ADB", transport.closed);
+    session.disconnect();
+  }
+
   private AdbSession connected(Transport t) throws Exception {
     AdbSession s = new AdbSession(e -> t, Runnable::run);
     CountDownLatch ready = new CountDownLatch(1);

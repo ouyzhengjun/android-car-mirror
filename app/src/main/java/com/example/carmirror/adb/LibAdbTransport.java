@@ -3,6 +3,8 @@ package com.example.carmirror.adb;
 import com.example.carmirror.Endpoint;
 import io.github.muntashirakon.adb.*;
 import java.io.*;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.TimeUnit;
 
 public final class LibAdbTransport implements AdbSession.Transport {
@@ -10,6 +12,11 @@ public final class LibAdbTransport implements AdbSession.Transport {
 
   public LibAdbTransport(Endpoint endpoint, AdbKeyStore store) throws Exception {
     AdbKeyStore.Credentials keys = store.load();
+    // Builder.build() opens its own socket with no caller-supplied connect timeout.
+    // Fail fast for an unreachable endpoint before entering that library call.
+    try (Socket probe = new Socket()) {
+      probe.connect(new InetSocketAddress(endpoint.host(), endpoint.port()), 5000);
+    }
     connection =
         new AdbConnection.Builder(endpoint.host(), endpoint.port())
             .setPrivateKey(keys.privateKey)

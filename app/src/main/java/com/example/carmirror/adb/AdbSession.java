@@ -10,6 +10,28 @@ import java.util.concurrent.*;
  * Blocking gateway methods must be invoked on a worker; connect/disconnect schedule their own work.
  */
 public final class AdbSession implements AdbGateway {
+  private static final long DEFAULT_CONNECT_TIMEOUT_MS = 30000;
+  private static final int MAX_COMMAND_OUTPUT_BYTES = 4 * 1024 * 1024;
+  private static final ScheduledExecutorService CONNECT_TIMER =
+      Executors.newSingleThreadScheduledExecutor(
+          r -> {
+            Thread t = new Thread(r, "adb-connect-timer");
+            t.setDaemon(true);
+            return t;
+          });
+
+  private static final class CommandUnavailableException extends IOException {
+    CommandUnavailableException(String message) {
+      super(message);
+    }
+  }
+
+  private static final class CommandOutputLimitException extends IOException {
+    CommandOutputLimitException() {
+      super("命令输出超过 4 MiB");
+    }
+  }
+
   public interface Transport extends Closeable {
     boolean connect(long timeoutMs) throws Exception;
 
@@ -22,6 +44,7 @@ public final class AdbSession implements AdbGateway {
 
   private final Factory factory;
   private final Executor callbacks;
+  private final long connectTimeoutMs;
   private final ExecutorService workers =
       Executors.newCachedThreadPool(
           r -> {
@@ -31,13 +54,23 @@ public final class AdbSession implements AdbGateway {
           });
   private final Set<AdbChannel> channels = new HashSet<>();
   private Transport transport;
+  private boolean ready;
+  private boolean connecting;
+  private Future<?> connectTask;
+  private ScheduledFuture<?> connectWatchdog;
   private long generation;
   private Listener listener;
   private Endpoint endpoint;
 
   public AdbSession(Factory factory, Executor callbacks) {
+    this(factory, callbacks, DEFAULT_CONNECT_TIMEOUT_MS);
+  }
+
+  AdbSession(Factory factory, Executor callbacks, long connectTimeoutMs) {
+    if (connectTimeoutMs <= 0) throw new IllegalArgumentException("connect timeout must be positive");
     this.factory = factory;
     this.callbacks = callbacks;
+    this.connectTimeoutMs = connectTimeoutMs;
   }
 
   private void state(long token, ConnectionState state, String message) {
@@ -60,68 +93,143 @@ public final class AdbSession implements AdbGateway {
     final long token;
     final Transport old;
     final List<AdbChannel> stale;
+    final Future<?> previousTask;
+    final ScheduledFuture<?> previousWatchdog;
     synchronized (this) {
       token = ++generation;
       this.listener = listener;
       this.endpoint = endpoint;
       old = transport;
       transport = null;
+      ready = false;
+      connecting = true;
+      previousTask = connectTask;
+      previousWatchdog = connectWatchdog;
+      connectTask = null;
+      connectWatchdog = null;
       stale = new ArrayList<>(channels);
       channels.clear();
     }
+    if (previousTask != null) previousTask.cancel(true);
+    if (previousWatchdog != null) previousWatchdog.cancel(false);
     workers.execute(
         () -> {
-          close(old);
           for (AdbChannel c : stale) close(c);
-          state(token, ConnectionState.CONNECTING, "正在连接 " + endpoint.serial());
+          close(old);
+        });
+    state(token, ConnectionState.CONNECTING, "正在连接 " + endpoint.serial());
+    FutureTask<Void> task = new FutureTask<>(
+        () -> {
           try {
             Transport next = factory.create(endpoint);
+            boolean obsolete;
             synchronized (this) {
-              if (token != generation) {
-                close(next);
-                return;
-              }
-              transport = next;
+              obsolete = token != generation || !connecting;
+              if (!obsolete) transport = next;
+            }
+            if (obsolete) {
+              close(next);
+              return null;
             }
             state(token, ConnectionState.AUTHORIZING, "请在车机上允许此设备的 USB 调试授权");
-            if (!next.connect(30000)) throw new IOException("ADB 授权或连接超时");
+            if (!next.connect(connectTimeoutMs)) throw new IOException("ADB 授权或连接超时");
+            synchronized (this) {
+              obsolete = token != generation || !connecting;
+              if (!obsolete) {
+                ready = true;
+                connecting = false;
+                if (connectWatchdog != null) connectWatchdog.cancel(false);
+                connectWatchdog = null;
+                connectTask = null;
+              }
+            }
+            if (obsolete) {
+              close(next);
+              return null;
+            }
             state(token, ConnectionState.CONNECTED, "已连接：" + endpoint.serial());
           } catch (Exception e) {
             fail(token, e);
           }
+          return null;
         });
+    synchronized (this) {
+      if (token != generation) return;
+      connectTask = task;
+      connectWatchdog =
+          CONNECT_TIMER.schedule(
+              () -> fail(token, new IOException("ADB 连接超过 " + connectTimeoutMs + " 毫秒"), true),
+              connectTimeoutMs,
+              TimeUnit.MILLISECONDS);
+    }
+    workers.execute(task);
   }
 
   private void fail(long token, Exception error) {
+    fail(token, error, false);
+  }
+
+  private void fail(long token, Exception error, boolean onlyWhileConnecting) {
     if (android.os.Build.VERSION.SDK_INT > 0)
       android.util.Log.e("CarMirrorADB", "ADB session failed", error);
     Transport failed;
     List<AdbChannel> stale;
+    Future<?> task;
+    ScheduledFuture<?> watchdog;
     synchronized (this) {
-      if (token != generation) return;
+      if (token != generation || (onlyWhileConnecting && !connecting)) return;
+      if (!connecting && transport == null) return;
       failed = transport;
       transport = null;
+      ready = false;
+      connecting = false;
+      task = connectTask;
+      connectTask = null;
+      watchdog = connectWatchdog;
+      connectWatchdog = null;
       stale = new ArrayList<>(channels);
       channels.clear();
     }
-    close(failed);
-    for (AdbChannel c : stale) close(c);
+    if (task != null) task.cancel(true);
+    if (watchdog != null) watchdog.cancel(false);
     String detail = error.getMessage();
     if (detail == null || detail.trim().isEmpty()) detail = error.getClass().getSimpleName();
-    state(token, ConnectionState.ERROR, "ADB 连接失败：" + detail);
+    if (onlyWhileConnecting) {
+      // A stalled library close must not delay the deadline reported to the UI.
+      state(token, ConnectionState.ERROR, "ADB 连接失败：" + detail);
+      workers.execute(
+          () -> {
+            for (AdbChannel c : stale) close(c);
+            close(failed);
+          });
+    } else {
+      close(failed);
+      for (AdbChannel c : stale) close(c);
+      state(token, ConnectionState.ERROR, "ADB 连接失败：" + detail);
+    }
   }
 
   public void disconnect() {
     final Transport old;
     final List<AdbChannel> stale;
     final long token;
+    final Future<?> task;
+    final ScheduledFuture<?> watchdog;
     synchronized (this) {
       token = ++generation;
       old = transport;
       transport = null;
+      ready = false;
+      connecting = false;
+      task = connectTask;
+      connectTask = null;
+      watchdog = connectWatchdog;
+      connectWatchdog = null;
       stale = new ArrayList<>(channels);
       channels.clear();
     }
+    if (task != null) task.cancel(true);
+    if (watchdog != null) watchdog.cancel(false);
     workers.execute(
         () -> {
           for (AdbChannel c : stale) close(c);
@@ -142,8 +250,12 @@ public final class AdbSession implements AdbGateway {
     synchronized (this) {
       current = transport;
       token = generation;
+      if (!ready) {
+        throw new CommandUnavailableException(
+            connecting ? "ADB 正在连接，请等待授权完成" : "ADB 未连接");
+      }
     }
-    if (current == null) throw new IOException("ADB 未连接");
+    if (current == null) throw new CommandUnavailableException("ADB 未连接");
     try {
       AdbChannel raw = current.open(destination);
       final AdbChannel[] owned = new AdbChannel[1];
@@ -162,7 +274,7 @@ public final class AdbSession implements AdbGateway {
               });
       owned[0] = channel;
       synchronized (this) {
-        if (current != transport) {
+        if (current != transport || !ready) {
           close(channel);
           throw new IOException("连接已替换");
         }
@@ -211,7 +323,8 @@ public final class AdbSession implements AdbGateway {
               int n;
               while ((n = channel.input().read(buffer)) != -1) {
                 synchronized (output) {
-                  if (output.size() + n > 4 * 1024 * 1024) throw new IOException("命令输出超过 4 MiB");
+                  if (output.size() + n > MAX_COMMAND_OUTPUT_BYTES)
+                    throw new CommandOutputLimitException();
                   output.write(buffer, 0, n);
                 }
               }
@@ -233,6 +346,15 @@ public final class AdbSession implements AdbGateway {
       synchronized (output) {
         return new CommandResult(output.toString("UTF-8"), -1, true);
       }
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (!(cause instanceof CommandUnavailableException)
+          && !(cause instanceof CommandOutputLimitException)) fail(commandGeneration, e);
+      String message =
+          cause instanceof CommandUnavailableException || cause instanceof CommandOutputLimitException
+              ? cause.getMessage()
+              : "命令失败";
+      throw new IOException(message, cause);
     } catch (Exception e) {
       fail(commandGeneration, e);
       throw new IOException("命令失败", e);
