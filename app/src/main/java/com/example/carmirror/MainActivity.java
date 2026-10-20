@@ -39,9 +39,7 @@ public class MainActivity extends Activity {
   @Override
   public void onCreate(Bundle state) {
     super.onCreate(state);
-    java.security.Security.insertProviderAt(org.conscrypt.Conscrypt.newProvider(), 1);
-    AdbKeyStore keyStore = new AdbKeyStore(getFilesDir());
-    adb = new AdbSession(endpoint -> new LibAdbTransport(endpoint, keyStore), this::runOnUiThread);
+    adb = ConnectionOwner.get(this);
     preferences = getSharedPreferences("connections", MODE_PRIVATE);
     ScrollView scroll = new ScrollView(this);
     LinearLayout content = new LinearLayout(this);
@@ -87,6 +85,10 @@ public class MainActivity extends Activity {
     status.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
     content.addView(status);
     button(content, "断开", view -> adb.disconnect());
+    button(content, "开始投屏", view -> {
+      if (!ConnectionOwner.isConnected()) { status.setText("请先连接车机"); return; }
+      startActivity(new android.content.Intent(this, MirrorActivity.class));
+    });
     EditText command = field(content, "ADB 命令", "command", InputType.TYPE_CLASS_TEXT);
     command.setHint("adb shell wm size");
     button(content, "执行命令", view -> executeCommand(command.getText().toString()));
@@ -143,7 +145,7 @@ public class MainActivity extends Activity {
   /** Hook for the ADB session integration. Never runs until endpoint validation succeeds. */
   protected void onEndpointSelected(Endpoint endpoint) {
     selectedEndpoint = endpoint;
-    adb.connect(endpoint, (state, message) -> status.setText(message));
+    ConnectionOwner.connect(endpoint);
   }
 
   private void executeCommand(String input) {
@@ -179,7 +181,7 @@ public class MainActivity extends Activity {
               runOnUiThread(
                   () ->
                       commandOutput.setText(
-                          "List of devices attached\n" + selectedEndpoint.serial() + "\tdevice"));
+                          "List of devices attached\n" + (selectedEndpoint == null ? preferences.getString("host", DEFAULT_HOST) + ":" + preferences.getString("port", DEFAULT_PORT) : selectedEndpoint.serial()) + "\tdevice"));
             } catch (Exception error) {
               runOnUiThread(() -> commandOutput.setText("List of devices attached\n"));
             }
@@ -210,8 +212,20 @@ public class MainActivity extends Activity {
   }
 
   @Override
+  protected void onResume() {
+    super.onResume();
+    status.setText(ConnectionOwner.message());
+    ConnectionOwner.observe((state, message) -> status.setText(message));
+  }
+
+  @Override
+  protected void onPause() {
+    ConnectionOwner.observe(null);
+    super.onPause();
+  }
+
+  @Override
   protected void onDestroy() {
-    adb.disconnect();
     commands.shutdownNow();
     super.onDestroy();
   }
