@@ -174,7 +174,7 @@ public class AdbSessionTest {
   }
 
   @Test
-  public void pushWritesSyncFramingAndHonorsRemoteFailure() throws Exception {
+  public void pushWritesSyncFraming() throws Exception {
     Transport t = new Transport();
     ByteArrayOutputStream sent = new ByteArrayOutputStream();
     t.channel =
@@ -228,6 +228,95 @@ public class AdbSessionTest {
     } finally {
       s.disconnect();
       worker.shutdownNow();
+    }
+  }
+
+  private static class PacketLimitedOutput extends ByteArrayOutputStream {
+    int largest;
+
+    @Override
+    public synchronized void write(byte[] data, int offset, int length) {
+      if (length > 4096)
+        throw new IllegalArgumentException("write exceeds READY-safe packet size: " + length);
+      largest = Math.max(largest, length);
+      super.write(data, offset, length);
+    }
+  }
+
+  @Test
+  public void largePushLimitsEveryUnderlyingWriteAndPreservesPayload() throws Exception {
+    byte[] payload = new byte[150000];
+    new Random(1234).nextBytes(payload);
+    PacketLimitedOutput sent = new PacketLimitedOutput();
+    Transport t = new Transport();
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream(new byte[] {'O', 'K', 'A', 'Y', 0, 0, 0, 0}), sent, () -> {});
+    AdbSession session = connected(t);
+    try {
+      session.push(new ByteArrayInputStream(payload), payload.length, "/data/local/tmp/server.jar");
+      DataInputStream wire = new DataInputStream(new ByteArrayInputStream(sent.toByteArray()));
+      ByteArrayOutputStream received = new ByteArrayOutputStream();
+      while (wire.available() > 0) {
+        byte[] id = new byte[4];
+        wire.readFully(id);
+        int length = Integer.reverseBytes(wire.readInt());
+        String kind = new String(id, "US-ASCII");
+        if (kind.equals("DONE")) break;
+        byte[] data = new byte[length];
+        wire.readFully(data);
+        if (kind.equals("DATA")) received.write(data);
+      }
+      assertArrayEquals(payload, received.toByteArray());
+      assertTrue(sent.largest <= 4096);
+    } finally {
+      session.disconnect();
+    }
+  }
+
+  @Test
+  public void longShellCommandLimitsEveryUnderlyingWrite() throws Exception {
+    char[] chars = new char[20000];
+    Arrays.fill(chars, 'x');
+    PacketLimitedOutput sent = new PacketLimitedOutput();
+    Transport t = new Transport();
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream("__CAR_MIRROR_EXIT__0\n".getBytes("UTF-8")), sent, () -> {});
+    AdbSession session = connected(t);
+    try {
+      assertEquals(0, session.shell(new String(chars), 1000).exitCode());
+      assertTrue(sent.toString("UTF-8").contains(new String(chars)));
+      assertTrue(sent.largest <= 4096);
+    } finally {
+      session.disconnect();
+    }
+  }
+
+  @Test
+  public void pushRemoteFailurePropagatesMessageAndClosesChannel() throws Exception {
+    Transport t = new Transport();
+    CountDownLatch closed = new CountDownLatch(1);
+    ByteArrayOutputStream reply = new ByteArrayOutputStream();
+    DataOutputStream protocol = new DataOutputStream(reply);
+    byte[] reason = "permission denied".getBytes("UTF-8");
+    protocol.writeBytes("FAIL");
+    protocol.writeInt(Integer.reverseBytes(reason.length));
+    protocol.write(reason);
+    t.channel =
+        new AdbChannel(
+            new ByteArrayInputStream(reply.toByteArray()),
+            new ByteArrayOutputStream(),
+            closed::countDown);
+    AdbSession session = connected(t);
+    try {
+      session.push(new ByteArrayInputStream(new byte[] {1}), 1, "/forbidden");
+      fail("expected remote failure");
+    } catch (IOException expected) {
+      assertEquals("permission denied", expected.getMessage());
+      assertEquals(0, closed.getCount());
+    } finally {
+      session.disconnect();
     }
   }
 
