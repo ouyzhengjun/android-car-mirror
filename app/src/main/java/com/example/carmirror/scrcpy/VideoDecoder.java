@@ -26,8 +26,9 @@ public final class VideoDecoder implements Closeable {
   private AvcConfig config;
   private boolean waitForKey=true;
   public VideoDecoder(){worker=new Thread(this::run,"scrcpy-decoder");worker.start();}
-  /** null detaches the surface. A new surface recreates the codec on API 21 too. */
-  public synchronized void attach(Surface surface){if(closed)throw new IllegalStateException("Decoder closed");this.surface=surface;surfaceVersion++;notifyAll();}
+  /** null detaches the surface. A new surface recreates the codec on API 21 too.
+   * Late Activity lifecycle callbacks are harmless after the decoder worker has exited. */
+  public synchronized void attach(Surface surface){if(closed)return;this.surface=surface;surfaceVersion++;notifyAll();}
   public synchronized void offer(VideoPacket packet)throws IOException{
     if(packet==null)throw new NullPointerException("packet");
     while(queue.size()>=CAPACITY&&!closed&&failure==null){try{wait();}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IOException("Interrupted video delivery",e);}}
