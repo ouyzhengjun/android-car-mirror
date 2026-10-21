@@ -45,10 +45,20 @@ public final class ConnectionOwner {
     }
     if(target!=null)target.onState(state,text);
   }
+  /** Last selected endpoint, kept so a dropped link can reconnect without user input. */
+  private static volatile Endpoint lastEndpoint;
   public static synchronized void connect(Endpoint endpoint){
+    lastEndpoint=endpoint;
     connectionEpoch++;
     update(ConnectionState.CONNECTING,"正在连接 " + endpoint.serial());
     session.connect(endpoint,ConnectionOwner::update);
+  }
+  /** Starts a fresh connection to the last endpoint. False when nothing was selected yet. */
+  public static synchronized boolean reconnect(){
+    Endpoint endpoint=lastEndpoint;
+    if(endpoint==null||session==null)return false;
+    connect(endpoint);
+    return true;
   }
   public static synchronized void disconnect(){
     connectionEpoch++;

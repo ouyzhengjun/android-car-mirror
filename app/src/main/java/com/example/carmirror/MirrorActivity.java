@@ -68,7 +68,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       controlDrain.start();
       VideoPacketReader reader=new VideoPacketReader();VideoPacketReader.VideoPacket packet;
       while(!closed.get()&&(packet=reader.readNext(streams.video().input()))!=null){
-        if(packet.isSession()){final int w=packet.width,h=packet.height;runOnUiThread(()->{if(closed.get())return;streamWidth=w;streamHeight=h;layoutVideo();cancelTouch();status.setVisibility(View.GONE);});}
+        if(packet.isSession()){reconnectAttempts=0;final int w=packet.width,h=packet.height;runOnUiThread(()->{if(closed.get())return;streamWidth=w;streamHeight=h;layoutVideo();cancelTouch();status.setVisibility(View.GONE);});}
         else decoder.noteNewest(packet.ptsUs);
         decoder.offer(packet);
       }
@@ -103,8 +103,64 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   @Override protected void onResume(){super.onResume();resumed=true;attachSurfaceIfReady();}
   @Override protected void onPause(){resumed=false;cancelTouch();exit.cancel();if(decoder!=null&&!closed.get())decoder.attach(null);super.onPause();}
   @Override public void onBackPressed(){submit(()->{if(writer!=null){writer.keycode(0,4);writer.keycode(1,4);}});}
+  private static final int MAX_RECONNECTS=5;
+  private static int reconnectAttempts;
+  private static long reconnectAt;
+  private static boolean isLinkFailure(Exception error){
+    String message=error.getMessage();if(message==null)return false;
+    return message.contains("Stream closed")||message.contains("Connection reset")||message.contains("Broken pipe")
+      ||message.contains("Socket closed")||message.contains("timed out");
+  }
+  private static boolean reserveReconnect(){
+    long now=android.os.SystemClock.uptimeMillis();
+    if(now-reconnectAt>30000)reconnectAttempts=0;
+    if(reconnectAttempts>=MAX_RECONNECTS)return false;
+    reconnectAttempts++;reconnectAt=now;return true;
+  }
   private void fail(Exception error){fail(error,false);}
-  private void fail(Exception error,boolean checkAdb){runOnUiThread(()->{if(closed.get())return;String detail=error.getMessage();if(detail==null||detail.trim().isEmpty())detail=error.getClass().getSimpleName();status.setText("投屏失败："+detail+"\n请按住 × 3秒退出后重新连接");status.setVisibility(View.VISIBLE);closeSession();if(checkAdb)ConnectionOwner.checkAfterStreamFailure(adb);});}
+  private void fail(Exception error,boolean checkAdb){runOnUiThread(()->{
+    if(closed.get())return;
+    if(checkAdb&&isLinkFailure(error)&&reserveReconnect()){
+      final int attempt=reconnectAttempts;
+      android.util.Log.w("MirrorReconnect","link failure: "+error.getMessage()+" attempt="+attempt);
+      status.setText("ADB 连接已断开，正在重连（第 "+attempt+"/"+MAX_RECONNECTS+" 次）…");
+      status.setVisibility(View.VISIBLE);
+      closeSession();
+      startReconnect(attempt);
+      return;
+    }
+    String detail=isLinkFailure(error)?"ADB 连接已断开":error.getMessage();
+    if(detail==null||detail.trim().isEmpty())detail=error.getClass().getSimpleName();
+    status.setText("投屏失败："+detail+"\n请按住 × 3秒退出后重新连接");
+    status.setVisibility(View.VISIBLE);
+    closeSession();
+    if(checkAdb)ConnectionOwner.checkAfterStreamFailure(adb);
+  });}
+  /** Reconnects and restarts this screen once the link is back; bounded to MAX_RECONNECTS. */
+  private void startReconnect(final int attempt){
+    new Thread(()->{
+      if(ConnectionOwner.reconnect()){
+        long deadline=android.os.SystemClock.uptimeMillis()+12000;
+        while(android.os.SystemClock.uptimeMillis()<deadline&&!ConnectionOwner.isConnected()){
+          if(isFinishing()||isDestroyed())return;
+          try{Thread.sleep(200);}catch(InterruptedException e){return;}
+        }
+      }
+      if(ConnectionOwner.isConnected()){
+        android.util.Log.w("MirrorReconnect","reconnected, restarting mirror");
+        runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())recreate();});
+        return;
+      }
+      if(reserveReconnect()){
+        final int next=reconnectAttempts;
+        android.util.Log.w("MirrorReconnect","retry attempt="+next);
+        runOnUiThread(()->{if(isFinishing()||isDestroyed())return;status.setText("ADB 连接已断开，正在重连（第 "+next+"/"+MAX_RECONNECTS+" 次）…");});
+        startReconnect(next);
+        return;
+      }
+      runOnUiThread(()->{if(isFinishing()||isDestroyed())return;status.setText("投屏失败：ADB 连接已断开\n请按住 × 3 秒退出后重新连接");status.setVisibility(View.VISIBLE);});
+    },"mirror-reconnect").start();
+  }
   /** All shutdown paths converge here. Closing scrcpy channels releases reads while ADB stays connected. */
   private void closeSession(){if(!closed.compareAndSet(false,true))return;handler.removeCallbacks(health);geometry=null;controls.shutdownNow();video.shutdownNow();
     final ScrcpySession current; synchronized(this){current=session;}
