@@ -24,11 +24,13 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private Thread controlDrain;
   private volatile VideoGeometry geometry;
   private final ExecutorService video=Executors.newSingleThreadExecutor();
-  private final ExecutorService controls=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<Runnable>(256));
+  private final ExecutorService controls=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<Runnable>(32));
   private final AtomicBoolean closed=new AtomicBoolean();
   // Each control write waits for an ADB READY, so a fast drag can outrun the link.
   // Only the newest move matters; older positions are dropped instead of queued.
   private final AtomicBoolean movePending=new AtomicBoolean();
+  // Non-zero while a control write runs; a stuck write means the control stream is dead.
+  private final java.util.concurrent.atomic.AtomicLong controlSince=new java.util.concurrent.atomic.AtomicLong();
   private boolean resumed;
   private FrameLayout root;
   private SurfaceView surface;
@@ -36,7 +38,9 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private ExitHandle exit;
   private int streamWidth,streamHeight;
   private final Handler handler=new Handler(Looper.getMainLooper());
-  private final Runnable health=new Runnable(){public void run(){if(closed.get())return;if(decoder!=null&&decoder.failure()!=null){fail(decoder.failure(),false);return;}handler.postDelayed(this,250);}};
+  private final Runnable health=new Runnable(){public void run(){if(closed.get())return;if(decoder!=null&&decoder.failure()!=null){fail(decoder.failure(),false);return;}
+    long since=controlSince.get();if(since!=0&&android.os.SystemClock.uptimeMillis()-since>2000){fail(new IOException("控制通道无响应"),true);return;}
+    handler.postDelayed(this,250);}};
 
   @Override public void onCreate(Bundle state){super.onCreate(state);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -80,12 +84,18 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     if(p.width!=w||p.height!=h){p.width=w;p.height=h;surface.setLayoutParams(p);}surface.setX(next.contentLeft);surface.setY(next.contentTop);
   }
   private interface IoAction{void run()throws IOException;}
-  private void submit(IoAction action){if(closed.get())return;try{controls.execute(()->{if(closed.get())return;try{action.run();}catch(Exception error){fail(error,true);}});}catch(RejectedExecutionException error){if(!closed.get())fail(new IOException("控制通道响应超时",error),false);}}
+  /** Returns false when the queue is full; stale input is dropped rather than killing the stream. */
+  private boolean submit(IoAction action){if(closed.get())return false;
+    try{controls.execute(()->{if(closed.get())return;controlSince.set(android.os.SystemClock.uptimeMillis());
+      try{action.run();}catch(Exception error){fail(error,true);}finally{controlSince.set(0);}});return true;}
+    catch(RejectedExecutionException error){return false;}}
   private boolean forward(MotionEvent e,float offsetX,float offsetY){VideoGeometry g=geometry;if(g==null||closed.get())return true;
     int action=e.getActionMasked();int start=action==MotionEvent.ACTION_MOVE?0:e.getActionIndex();int end=action==MotionEvent.ACTION_MOVE?e.getPointerCount():start+1;
     for(int i=start;i<end;i++){TouchSample sample=new TouchSample(action,e.getPointerId(i),e.getX(i)+offsetX,e.getY(i)+offsetY,e.getPressure(i));
-      if(sample.action==TouchSample.MOVE&&!movePending.compareAndSet(false,true))continue;
-      submit(()->{try{if(touch!=null)touch.onTouch(sample,g);}finally{if(sample.action==TouchSample.MOVE)movePending.set(false);}});}
+      boolean move=sample.action==TouchSample.MOVE;
+      if(move&&!movePending.compareAndSet(false,true))continue;
+      boolean queued=submit(()->{try{if(touch!=null)touch.onTouch(sample,g);}finally{if(move)movePending.set(false);}});
+      if(!queued&&move)movePending.set(false);}
     return true;
   }
   private void cancelTouch(){VideoGeometry g=geometry;submit(()->{if(touch!=null)touch.onTouch(new TouchSample(3,0,0,0,0),g);});}
