@@ -26,6 +26,9 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private final ExecutorService video=Executors.newSingleThreadExecutor();
   private final ExecutorService controls=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<Runnable>(256));
   private final AtomicBoolean closed=new AtomicBoolean();
+  // Each control write waits for an ADB READY, so a fast drag can outrun the link.
+  // Only the newest move matters; older positions are dropped instead of queued.
+  private final AtomicBoolean movePending=new AtomicBoolean();
   private boolean resumed;
   private FrameLayout root;
   private SurfaceView surface;
@@ -62,6 +65,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       VideoPacketReader reader=new VideoPacketReader();VideoPacketReader.VideoPacket packet;
       while(!closed.get()&&(packet=reader.readNext(streams.video().input()))!=null){
         if(packet.isSession()){final int w=packet.width,h=packet.height;runOnUiThread(()->{if(closed.get())return;streamWidth=w;streamHeight=h;layoutVideo();cancelTouch();status.setVisibility(View.GONE);});}
+        else decoder.noteNewest(packet.ptsUs);
         decoder.offer(packet);
       }
       if(!closed.get())fail(new IOException("投屏连接已断开"),true);
@@ -79,7 +83,10 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private void submit(IoAction action){if(closed.get())return;try{controls.execute(()->{if(closed.get())return;try{action.run();}catch(Exception error){fail(error,true);}});}catch(RejectedExecutionException error){if(!closed.get())fail(new IOException("控制通道响应超时",error),false);}}
   private boolean forward(MotionEvent e,float offsetX,float offsetY){VideoGeometry g=geometry;if(g==null||closed.get())return true;
     int action=e.getActionMasked();int start=action==MotionEvent.ACTION_MOVE?0:e.getActionIndex();int end=action==MotionEvent.ACTION_MOVE?e.getPointerCount():start+1;
-    for(int i=start;i<end;i++){TouchSample sample=new TouchSample(action,e.getPointerId(i),e.getX(i)+offsetX,e.getY(i)+offsetY,e.getPressure(i));submit(()->{if(touch!=null)touch.onTouch(sample,g);});}return true;
+    for(int i=start;i<end;i++){TouchSample sample=new TouchSample(action,e.getPointerId(i),e.getX(i)+offsetX,e.getY(i)+offsetY,e.getPressure(i));
+      if(sample.action==TouchSample.MOVE&&!movePending.compareAndSet(false,true))continue;
+      submit(()->{try{if(touch!=null)touch.onTouch(sample,g);}finally{if(sample.action==TouchSample.MOVE)movePending.set(false);}});}
+    return true;
   }
   private void cancelTouch(){VideoGeometry g=geometry;submit(()->{if(touch!=null)touch.onTouch(new TouchSample(3,0,0,0,0),g);});}
   @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();exit.cancel();geometry=null;root.post(this::layoutVideo);}

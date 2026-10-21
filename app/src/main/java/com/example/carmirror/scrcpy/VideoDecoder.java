@@ -16,8 +16,10 @@ import com.example.carmirror.scrcpy.VideoPacketReader.VideoPacket;
 public final class VideoDecoder implements Closeable {
   private static final int CAPACITY=3;
   // Frames arrive in bursts over ADB; render them on their presentation timeline instead
-  // of on arrival so motion stays even. The delay absorbs normal jitter.
-  private static final long PLAYOUT_DELAY_US=50000;
+  // of on arrival so motion stays even. Keep both values small: latency matters more
+  // than perfect pacing, so a backlog beyond MAX_BACKLOG drops older decoded frames.
+  private static final long PLAYOUT_DELAY_US=25000;
+  private static final long MAX_BACKLOG_US=100000;
   private long basePtsUs=-1,baseWallUs;
   private final ArrayDeque<VideoPacket> queue=new ArrayDeque<>();
   private final Thread worker;
@@ -80,11 +82,24 @@ public final class VideoDecoder implements Closeable {
   private void drain(){
     if(codec==null)return;
     MediaCodec.BufferInfo info=new MediaCodec.BufferInfo();int index;
-    while((index=codec.dequeueOutputBuffer(info,0))>=0){
-      pace(info.presentationTimeUs);
-      codec.releaseOutputBuffer(index,true);
+    java.util.ArrayList<Integer> indices=new java.util.ArrayList<>(4);
+    java.util.ArrayList<Long> times=new java.util.ArrayList<>(4);
+    while((index=codec.dequeueOutputBuffer(info,0))>=0){indices.add(index);times.add(info.presentationTimeUs);}
+    int last=indices.size()-1;
+    if(last<0)return;
+    boolean backlogged=last>0&&newestPtsUs-times.get(0)>MAX_BACKLOG_US;
+    if(backlogged){
+      // The stream ran ahead of the display; decoding already happened, so skip the
+      // stale frames and restart the schedule from the newest one.
+      for(int k=0;k<last;k++)codec.releaseOutputBuffer(indices.get(k),false);
+      basePtsUs=times.get(last);baseWallUs=System.nanoTime()/1000+PLAYOUT_DELAY_US;
+      codec.releaseOutputBuffer(indices.get(last),true);
+      return;
     }
+    for(int k=0;k<=last;k++){pace(times.get(k));codec.releaseOutputBuffer(indices.get(k),true);}
   }
+  private volatile long newestPtsUs;
+  public void noteNewest(long ptsUs){newestPtsUs=ptsUs;}
   /** Sleeps until this frame's position on the playback timeline. */
   private void pace(long ptsUs){
     long now=System.nanoTime()/1000;
