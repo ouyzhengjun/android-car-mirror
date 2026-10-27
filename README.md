@@ -1,29 +1,62 @@
 # 车机投屏
 
-可安装在 Android 平板上的单 APK。平板直接通过经典 TCP ADB 连接车机，上传并启动内置的 scrcpy 4.0 server，以 H.264 投屏并回传触摸。无需电脑中转、root 或系统悬浮窗权限。
+安装在 Android 平板上的单 APK，支持平板 USB OTG Host 直连车机 ADB，以及手动经典 TCP ADB。应用上传并启动内置 scrcpy 4.0 server，以 H.264 投屏并回传触摸，无需电脑中转、root 或系统悬浮窗权限。USB 端到端真机验收仍待完成，当前证据见[本次验证记录](docs/verification/2026-10-27-t26fl-usb-demo.md)。
 
-## 使用
+## 连接与使用
 
-1. 在车机上启用经典 TCP ADB，确认平板与车机网络互通，并准备在车机上允许首次 RSA 调试授权。
-2. 安装 APK，打开“车机投屏”。输入车机的 IPv4 地址和端口，点击“连接”。默认填写 `192.168.42.147:5555`，可修改并保存多个连接项。
-3. 状态显示“已连接”后，可以输入 `adb shell <命令>` 并点击“执行命令”；也支持 `adb devices`、`adb connect [IP:端口]` 和 `adb disconnect`。
-4. 点击“开始投屏”。可直接点击、滑动或多指操作车机。屏幕上的 × 图标可以拖动；原地按住满 3 秒退出投屏并回到连接页。退出投屏后 ADB 连接可继续使用。
+主页可滚动，分为「1 · ADB 设备」「2 · 模式选择」「3 · 投屏设置」。同一时间只保留一个活动 ADB/投屏会话，切换目标会关闭旧会话。
 
-本应用仅支持经典 TCP ADB，不支持 Android 11 以后的配对码式无线调试。音频、录屏、文件管理和 USB ADB 不在当前功能范围内。
+### USB OTG 直连
 
-若连接提示被拒绝，请先确认车机上的 adbd 已监听输入的 TCP 端口；能 ping 通 IP 并不能证明 ADB 端口已开放。首次连接还需要在车机屏幕上允许本应用生成的 RSA 调试密钥。
+1. 在车机开启 USB 调试，准备在车机屏幕确认首次 RSA 调试授权。
+2. 平板须支持 USB Host；用支持数据传输的 OTG 线将平板接到车机实际暴露 USB ADB device 接口的调试口。车机普通 USB Host 口或仅充电线无法用于此连接。平板接开发电脑时通常是 USB device，须换线切换为 Host。
+3. 打开应用，在「ADB 设备」选择 USB 候选，点击「选择设备并连接 / 重试」。应用只识别带 bulk IN/OUT 的 ADB 接口 `0xff/0x42/0x01`。
+4. 在平板允许系统 USB 设备访问，再在车机允许 RSA 调试授权。这是两个独立授权；只有系统 USB 授权并不代表 ADB 已连接。
+5. 状态为已连接后，可执行 `adb shell wm size` 等命令，进入投屏设置并点击「读取显示尺寸」，选定区域和参数，再点击「开始投屏」。授权被拒或连接失败时按状态提示处理后重新选择并重试。
 
-部分车机把 `/data/local/tmp` 设为 shell 用户不可写。应用会先尝试该目录，失败后自动改用共享存储上传 scrcpy server，因此不需要 root 或放宽系统权限。
+### 手动无线 TCP ADB
+
+1. 车机须已开启经典 TCP ADB，平板与车机网络互通。输入车机 IPv4 地址与端口，点击「连接」，并在车机允许首次 RSA 授权。T26FL 现场地址为 `192.168.43.160:5555`，请按现场网络修改。
+2. 可点击「保存连接项」，以后选中保存项并点「使用选中连接项」，再手动连接；也可在统一设备列表中选择已保存无线目标并连接。应用不扫描局域网、不自动连接无线目标。
+3. 连接后支持 `adb shell <命令>`、`adb devices`、`adb connect [IP:端口]` 和 `adb disconnect`。投屏步骤与 USB 相同。
+
+若显示 Connection refused，请确认车机 adbd 正在目标 TCP 端口监听；能 ping 通不代表 ADB 可用。本应用不支持配对码式无线调试。
+
+### 前台 USB 演示模式
+
+在「模式选择」打开「USB 演示模式（仅应用前台）」。只有一个 USB ADB 候选时会请求授权、连接并自动投屏；多个候选时等待用户选择并连接；没有设备时显示等待 OTG 连接。首次授权仍需人工确认，拒绝或失败可重试。演示只处理 USB。
+
+应用进入后台后停止 USB 演示监听，不从后台拉起投屏；返回前台后重新检查设备。拔线会结束对应会话并恢复等待，重新插入可再次触发演示。投屏中可拖动 × 退出图标；原地按住满 **3 秒**退出并关闭演示模式，避免仍插着线时立即重新投屏。手动退出投屏后 ADB 连接可继续使用。
+
+## 投屏区域和参数
+
+T26FL 的 display 0 是 `5120×1600`，左主屏、右副屏各 `2560×1600`；两半均使用显示器 ID `0`，不要把其他 HDMI/虚拟 display 当成右副屏。首次读取到此尺寸且没有已保存区域时默认仅主屏，其他尺寸默认全屏。
+
+| 区域 | T26FL 原始区域 / server crop |
+| --- | --- |
+| 全屏 | 完整 `5120×1600`，不传 crop |
+| 仅主屏（左） | `2560:1600:0:0` |
+| 仅副屏（右） | `2560:1600:2560:0` |
+| 自定义 | 输入宽、高、x、y；宽高为正偶数，x/y 非负，区域不得超出原始显示尺寸 |
+
+| 参数 | 默认 | 范围 |
+| --- | --- | --- |
+| 显示器 ID | 0 | 0–255 |
+| 最长边 | 2560 | 256–8192，16 的倍数 |
+| 视频码率 | 8 Mbps | 1–50 Mbps |
+| 帧率 | 30 | 1–60 |
+
+选定设备并连接后读取显示尺寸，修改参数，点击「保存当前设备投屏设置」保存，或点击「开始投屏」应用设置。设置按设备保存；同型号 USB 设备若无可用序列号，可能共享设置，但当前连接选择仍按 USB 路径区分。无法读取尺寸时仅全屏可用。服务端先裁切再编码并负责触控坐标映射，客户端不另加副屏偏移。最长边限制可降低输出分辨率，完整区域不等于原始像素输出；越界裁切会被拒绝。
 
 ## 构建和安装
 
-需要 JDK 17、Android SDK Platform 34、Build Tools 34.0.0。Gradle wrapper 为 8.7，Android Gradle Plugin 为 8.5.0。
+需要 JDK 17、Android SDK Platform 34、Build Tools 34.0.0。Gradle wrapper 8.7，Android Gradle Plugin 8.5.0。
 
 ```sh
-./gradlew testDebugUnitTest assembleDebug
+./gradlew testDebugUnitTest assembleDebug --offline
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。最低系统版本为 Android 5.0（API 21）。目前代码使用 Android 公共 API 和系统 H.264 解码器，构建不依赖设备 CPU 架构；实际兼容情况请看 [真机验证记录](docs/verification/2026-10-20-device-check.md)。
+APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。最低 Android 5.0（API 21）；minSdk 和 JVM 测试不能证明全部系统/车机兼容。当前仅在 API 36 平板验证安装、主页及无 OTG 等待流程；API 21–35 运行、实际 USB 视频/触控及本次 T26FL 无线投屏仍待验证。历史无线结果见[2026-10-20 验证记录](docs/verification/2026-10-20-device-check.md)，不替代本次验收。
 
-Manifest 仅申请 `INTERNET` 权限；可拖动的退出图标是投屏页面内的控件。ADB 私钥保存在应用私有目录。scrcpy server 的版本、来源、校验值和许可证见 [第三方声明](THIRD_PARTY_NOTICES.md)。
+应用不提供音频、录屏、文件管理、后台常驻服务或开机自启。Manifest 申请 INTERNET，并声明可选 USB Host feature；USB 设备访问由系统单独授权。退出图标是投屏页内控件。ADB 私钥保存在应用私有目录。若 `/data/local/tmp` 不可写，会尝试共享存储上传 server，无需 root。第三方 server 的来源、校验值与许可证见[第三方声明](THIRD_PARTY_NOTICES.md)。
