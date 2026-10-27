@@ -119,18 +119,19 @@ public class UsbAdbTransportTest {
   }
 
   @Test
-  public void multiplexesAndAcknowledgesOnlyConsumedData() throws Exception {
+  public void multiplexesAndAcknowledgesBufferedDataPerStream() throws Exception {
     connected();
     AdbChannel a = open(11), b = open(12);
     feed("WRTE", 11, 1, new byte[] {1, 2});
     feed("WRTE", 12, 2, new byte[] {3});
+    // Each write is acknowledged on arrival, per stream, so the peer never waits for our reader.
+    assertEquals(1, arg(next("OKAY"), 1));
+    assertEquals(2, arg(next("OKAY"), 1));
     assertEquals(3, b.input().read());
-    byte[] ack = next("OKAY");
-    assertEquals(2, arg(ack, 1));
     assertEquals(1, a.input().read());
     assertNull(io.packets.poll(40, TimeUnit.MILLISECONDS));
     assertEquals(2, a.input().read());
-    next("OKAY");
+    assertNull(io.packets.poll(40, TimeUnit.MILLISECONDS));
     feed("CLSE", 11, 1, new byte[0]);
     assertEquals(-1, a.input().read());
     assertNull(io.packets.poll(40, TimeUnit.MILLISECONDS));
@@ -353,8 +354,11 @@ public class UsbAdbTransportTest {
   public void inboundFlowControlViolationAbortsConnection() throws Exception {
     connected();
     AdbChannel a = open(11);
-    feed("WRTE", 11, 1, new byte[] {1});
-    feed("WRTE", 11, 1, new byte[] {2});
+    // Acknowledgements are immediate until the buffer cap holds one back; a write that arrives
+    // after that means the peer ignored the withheld acknowledgement.
+    for (int i = 0; i < 8; i++) feed("WRTE", 11, 1, new byte[] {(byte) i});
+    feed("WRTE", 11, 1, new byte[] {9});
+    feed("WRTE", 11, 1, new byte[] {10});
     long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(1);
     while (!io.closed && System.nanoTime() < end) Thread.sleep(1);
     assertTrue(io.closed);
@@ -439,6 +443,8 @@ public class UsbAdbTransportTest {
     assertEquals(7, channel.input().read());
     assertEquals(8, channel.input().read());
     assertEquals(-1, channel.input().read());
+    // The write was already acknowledged when it arrived, before the opener resumed.
+    next("OKAY");
     assertNull(io.packets.poll(40, TimeUnit.MILLISECONDS));
   }
 

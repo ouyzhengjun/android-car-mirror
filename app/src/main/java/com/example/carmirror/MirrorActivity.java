@@ -46,8 +46,19 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private ExitHandle exit;
   private int streamWidth,streamHeight;
   private final Handler handler=new Handler(Looper.getMainLooper());
+  /** Warn once when one control write is slow; fail only once it is clearly stuck. */
+  private static final long CONTROL_STALL_WARN_MS=2000,CONTROL_STALL_FAIL_MS=8000;
+  private boolean stallWarned;
   private final Runnable health=new Runnable(){public void run(){if(closed.get())return;if(decoder!=null&&decoder.failure()!=null){fail(decoder.failure(),false);return;}
-    long since=controlSince.get();if(since!=0&&android.os.SystemClock.uptimeMillis()-since>2000){fail(new IOException("控制通道无响应"),true);return;}
+    long since=controlSince.get();
+    if(since!=0){
+      long waited=android.os.SystemClock.uptimeMillis()-since;
+      // A control frame waits for the device to accept it; under load that pause can last
+      // seconds while video keeps playing. Failing on the first slow frame costs a full
+      // reconnect, so warn early and only give up when the write is clearly stuck.
+      if(waited>CONTROL_STALL_WARN_MS&&!stallWarned){stallWarned=true;android.util.Log.w("CarMirrorMirror","control write pending for "+waited+" ms");}
+      if(waited>CONTROL_STALL_FAIL_MS){android.util.Log.w("CarMirrorMirror","control write stuck for "+waited+" ms");fail(new IOException("控制通道无响应"),true);return;}
+    }else stallWarned=false;
     handler.postDelayed(this,250);}};
 
   @Override public void onCreate(Bundle state){super.onCreate(state);
@@ -171,6 +182,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     }
     String detail=isLinkFailure(error)?"ADB 连接已断开":error.getMessage();
     if(detail==null||detail.trim().isEmpty())detail=error.getClass().getSimpleName();
+    android.util.Log.w("CarMirrorMirror","mirror failed: "+detail+" ("+error.getClass().getSimpleName()+", checkAdb="+checkAdb+")",error);
     status.setText("投屏失败："+detail+"\n请按住 × 3秒退出后重新连接");
     status.setVisibility(View.VISIBLE);
     closeSession();

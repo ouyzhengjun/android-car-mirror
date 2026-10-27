@@ -5,15 +5,24 @@ import java.io.*;
 import java.net.ConnectException;
 import java.util.Arrays;
 
-/** A single unacknowledged inbound packet bounds buffering to 4 KiB per stream. */
+/**
+ * One ADB stream. Inbound WRTEs are acknowledged as soon as they are buffered rather than when
+ * the consumer drains them: adbd stops writing to every stream when its host-bound queue fills,
+ * so tying acknowledgements to decoding speed stalls unrelated streams such as the control
+ * channel. Buffering is capped, and the cap withholds the acknowledgement instead of dropping
+ * data, which is the protocol's own backpressure.
+ */
 final class UsbAdbStream implements Closeable {
   private static final byte[] EMPTY = new byte[0];
+  /** Absorbs decoder jitter without turning a slow consumer into unbounded memory. */
+  private static final int MAX_BUFFERED_PACKETS = 8;
   final int local;
   private final UsbAdbTransport transport;
-  private int remote, offset;
+  private final java.util.ArrayDeque<byte[]> inbound = new java.util.ArrayDeque<>();
+  private int remote, offset, deferredAcks;
   private boolean closed, writePending;
   private IOException failure;
-  private byte[] pending;
+  private byte[] current;
 
   UsbAdbStream(UsbAdbTransport transport, int local) {
     this.transport = transport;
@@ -44,7 +53,7 @@ final class UsbAdbStream implements Closeable {
   }
 
   void receive(AdbPacket p) throws IOException {
-    boolean remove = false, emptyWrite = false, late = false;
+    boolean remove = false, ack = false, late = false;
     synchronized (this) {
       if (closed) {
         late = p.command != AdbPacket.CLSE;
@@ -62,11 +71,14 @@ final class UsbAdbStream implements Closeable {
           writePending = false;
         } else if (remote == 0) throw new IOException("Data before OPEN acknowledgement");
         else if (p.command == AdbPacket.WRTE) {
-          if (pending != null) throw new IOException("ADB inbound flow control violation");
-          emptyWrite = p.payload.length == 0;
-          if (!emptyWrite) {
-            pending = p.payload;
-            offset = 0;
+          // The peer waits for this acknowledgement before sending again, so a second unacked
+          // write means it ignored our backpressure.
+          if (deferredAcks > 0) throw new IOException("ADB inbound flow control violation");
+          if (p.payload.length == 0) ack = true;
+          else {
+            inbound.add(p.payload);
+            if (inbound.size() >= MAX_BUFFERED_PACKETS) deferredAcks++;
+            else ack = true;
           }
         } else {
           closed = true;
@@ -77,13 +89,15 @@ final class UsbAdbStream implements Closeable {
     }
     if (late) transport.send(AdbPacket.CLSE, local, p.arg0, EMPTY);
     else if (remove) transport.remove(local);
-    else if (emptyWrite) transport.send(AdbPacket.OKAY, local, remote, EMPTY);
+    else if (ack) transport.send(AdbPacket.OKAY, local, remote, EMPTY);
   }
 
   synchronized void fail(IOException e) {
     failure = e;
     closed = true;
-    pending = null;
+    current = null;
+    inbound.clear();
+    deferredAcks = 0;
     notifyAll();
   }
 
@@ -102,7 +116,7 @@ final class UsbAdbStream implements Closeable {
             int n;
             boolean ack;
             synchronized (UsbAdbStream.this) {
-              while (pending == null && !closed) {
+              while (current == null && inbound.isEmpty() && !closed) {
                 check();
                 try {
                   UsbAdbStream.this.wait();
@@ -112,12 +126,21 @@ final class UsbAdbStream implements Closeable {
                 }
               }
               check();
-              if (pending == null) return -1;
-              n = Math.min(len, pending.length - offset);
-              System.arraycopy(pending, offset, b, off, n);
+              if (current == null) {
+                if (inbound.isEmpty()) return -1;
+                current = inbound.poll();
+                offset = 0;
+              }
+              n = Math.min(len, current.length - offset);
+              System.arraycopy(current, offset, b, off, n);
               offset += n;
-              ack = offset == pending.length;
-              if (ack) pending = null;
+              if (offset == current.length) {
+                current = null;
+                offset = 0;
+              }
+              // Draining freed a slot: release the acknowledgement held back by the cap.
+              ack = deferredAcks > 0 && inbound.size() < MAX_BUFFERED_PACKETS;
+              if (ack) deferredAcks--;
               ack = ack && !closed;
             }
             if (ack) transport.send(AdbPacket.OKAY, local, remote, EMPTY);
@@ -177,7 +200,9 @@ final class UsbAdbStream implements Closeable {
     synchronized (this) {
       if (closed) return;
       closed = true;
-      pending = null;
+      current = null;
+      inbound.clear();
+      deferredAcks = 0;
       peer = remote;
       notifyAll();
     }
