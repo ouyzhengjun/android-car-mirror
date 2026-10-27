@@ -64,6 +64,23 @@ public class ScrcpyLauncherTest {
   }
 
   @Test
+  public void sendsValidatedSnapshotAndOmitsCropForFullDisplay() throws Exception {
+    for (MirrorSettings.Region region : new MirrorSettings.Region[] {MirrorSettings.Region.FULL, MirrorSettings.Region.SECONDARY}) {
+      Device d = new Device();
+      MirrorOptions options = new MirrorSettings(region, 7, 1280, 12000000, 45, null).resolve(5120,1600);
+      ScrcpySession s = new ScrcpyLauncher(() -> new ByteArrayInputStream(new byte[] {1,2,3}),3,1000,options);
+      try {
+        s.start(d);
+        String command=d.command.toString("UTF-8");
+        assertTrue(command.contains(" display_id=7 max_size=1280 video_bit_rate=12000000 max_fps=45"));
+        if (region == MirrorSettings.Region.FULL) assertFalse(command.contains(" crop="));
+        else assertTrue(command.contains(" crop=2560:1600:2560:0"));
+        assertTrue(command.contains("audio=false"));
+      } finally { s.stop(); }
+    }
+  }
+
+  @Test
   public void pushesStartsAndConnectsVideoBeforeControl() throws Exception {
     Device device = new Device();
     ScrcpySession session = launcher(1000);

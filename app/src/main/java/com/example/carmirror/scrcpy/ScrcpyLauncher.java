@@ -20,10 +20,15 @@ public final class ScrcpyLauncher implements ScrcpySession {
 
   private final ServerSource source;
   private final long size, timeoutMs;
+  private final MirrorOptions options;
   private Run active;
 
   public ScrcpyLauncher(Context context) throws IOException {
-    this(() -> context.getAssets().open("scrcpy-server-v4.0"), assetSize(context), 15000);
+    this(context, MirrorSettings.defaultForDisplay(0, 0).resolve(0, 0));
+  }
+
+  public ScrcpyLauncher(Context context, MirrorOptions options) throws IOException {
+    this(() -> context.getAssets().open("scrcpy-server-v4.0"), assetSize(context), 15000, options);
   }
 
   private static long assetSize(Context context) throws IOException {
@@ -37,8 +42,13 @@ public final class ScrcpyLauncher implements ScrcpySession {
   }
 
   public ScrcpyLauncher(ServerSource source, long size, long timeoutMs) {
+    this(source, size, timeoutMs, MirrorSettings.defaultForDisplay(0, 0).resolve(0, 0));
+  }
+
+  public ScrcpyLauncher(ServerSource source, long size, long timeoutMs, MirrorOptions options) {
     if (size <= 0 || timeoutMs <= 0) throw new IllegalArgumentException();
     this.source = Objects.requireNonNull(source);
+    this.options = Objects.requireNonNull(options);
     this.size = size;
     this.timeoutMs = timeoutMs;
   }
@@ -133,6 +143,11 @@ public final class ScrcpyLauncher implements ScrcpySession {
             + " exec app_process / com.genymobile.scrcpy.Server 4.0 scid="
             + scid
             + " tunnel_forward=true audio=false video=true control=true video_codec=h264"
+            + " display_id=" + options.displayId
+            + " max_size=" + options.maxSize
+            + " video_bit_rate=" + options.bitRate
+            + " max_fps=" + options.maxFps
+            + (options.crop == null ? "" : " crop=" + options.crop)
             + " cleanup=true\n";
     process.output().write(command.getBytes(StandardCharsets.UTF_8));
     process.output().flush();
