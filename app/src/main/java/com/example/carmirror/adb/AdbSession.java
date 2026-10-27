@@ -38,6 +38,10 @@ public final class AdbSession implements AdbGateway {
     AdbChannel open(String destination) throws Exception;
   }
 
+  public interface TransportSupplier {
+    Transport create() throws Exception;
+  }
+
   public interface Factory {
     Transport create(Endpoint endpoint) throws Exception;
   }
@@ -60,7 +64,6 @@ public final class AdbSession implements AdbGateway {
   private ScheduledFuture<?> connectWatchdog;
   private long generation;
   private Listener listener;
-  private Endpoint endpoint;
 
   public AdbSession(Factory factory, Executor callbacks) {
     this(factory, callbacks, DEFAULT_CONNECT_TIMEOUT_MS);
@@ -90,6 +93,13 @@ public final class AdbSession implements AdbGateway {
   }
 
   public void connect(Endpoint endpoint, Listener listener) {
+    connect(endpoint.serial(), () -> factory.create(endpoint), listener);
+  }
+
+  /** Supplier, including USB open and credentials loading, always runs on an ADB worker. */
+  public void connect(String label, TransportSupplier supplier, Listener listener) {
+    Objects.requireNonNull(label);
+    Objects.requireNonNull(supplier);
     final long token;
     final Transport old;
     final List<AdbChannel> stale;
@@ -98,7 +108,6 @@ public final class AdbSession implements AdbGateway {
     synchronized (this) {
       token = ++generation;
       this.listener = listener;
-      this.endpoint = endpoint;
       old = transport;
       transport = null;
       ready = false;
@@ -117,11 +126,11 @@ public final class AdbSession implements AdbGateway {
           for (AdbChannel c : stale) close(c);
           close(old);
         });
-    state(token, ConnectionState.CONNECTING, "正在连接 " + endpoint.serial());
+    state(token, ConnectionState.CONNECTING, "正在连接 " + label);
     FutureTask<Void> task = new FutureTask<>(
         () -> {
           try {
-            Transport next = factory.create(endpoint);
+            Transport next = supplier.create();
             boolean obsolete;
             synchronized (this) {
               obsolete = token != generation || !connecting;
@@ -147,7 +156,7 @@ public final class AdbSession implements AdbGateway {
               close(next);
               return null;
             }
-            state(token, ConnectionState.CONNECTED, "已连接：" + endpoint.serial());
+            state(token, ConnectionState.CONNECTED, "已连接：" + label);
           } catch (Exception e) {
             fail(token, e);
           }

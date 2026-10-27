@@ -62,6 +62,34 @@ public class ConnectionOwnerTest {
     assertTrue(ConnectionOwner.isConnected());
   }
 
+  @Test public void detachedUsbCancelsPendingConnectionAndDoesNotReconnectTcp() throws Exception {
+    connect();
+    com.example.carmirror.adb.usb.UsbCandidate candidate=DeviceCatalogTest.usb();
+    CountDownLatch ioClosed=new CountDownLatch(1);
+    com.example.carmirror.adb.usb.UsbIo io=new com.example.carmirror.adb.usb.UsbIo(){
+      public int read(byte[] b,int o,int n,int t){return 0;}
+      public int write(byte[] b,int o,int n,int t){return n;}
+      public void close(){ioClosed.countDown();}
+    };
+    ConnectionOwner.connectUsb(candidate,io);
+    ConnectionOwner.usbDetached(candidate);
+    assertFalse(ConnectionOwner.isConnected());
+    assertFalse(ConnectionOwner.reconnect());
+    assertTrue(ioClosed.await(2,TimeUnit.SECONDS));
+  }
+
+  @Test public void tcpSwitchReleasesUsbIoAndRestoresTcpReconnect() throws Exception {
+    CountDownLatch closed=new CountDownLatch(1);
+    ConnectionOwner.connectUsb(DeviceCatalogTest.usb(),new com.example.carmirror.adb.usb.UsbIo(){
+      public int read(byte[] b,int o,int n,int t){return 0;}
+      public int write(byte[] b,int o,int n,int t){return n;}
+      public void close(){closed.countDown();}
+    });
+    connect(); assertTrue(closed.await(2,TimeUnit.SECONDS));
+    assertEquals(DeviceEntry.tcpId(Endpoint.parse("192.168.42.147","5555")),ConnectionOwner.catalog().selectedId());
+    assertTrue(ConnectionOwner.reconnect());
+  }
+
   private void connect() throws Exception {
     CountDownLatch ready=new CountDownLatch(1);
     ConnectionOwner.observe((state,message)->{if(state==ConnectionState.CONNECTED)ready.countDown();});

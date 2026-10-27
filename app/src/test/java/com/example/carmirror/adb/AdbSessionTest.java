@@ -28,6 +28,20 @@ public class AdbSessionTest {
     }
   }
 
+  @Test public void supplierRunsOffCallerAndSwitchClosesOwnedStreams() throws Exception {
+    Transport tcp = new Transport(), usb = new Transport();
+    CountDownLatch closed = new CountDownLatch(1), first = new CountDownLatch(1), second = new CountDownLatch(1);
+    tcp.channel = new AdbChannel(new ByteArrayInputStream(new byte[0]), new ByteArrayOutputStream(), closed::countDown);
+    AdbSession session = new AdbSession(e -> tcp, Runnable::run);
+    session.connect(Endpoint.parse("127.0.0.1", "5555"), (s,m) -> {if(s==ConnectionState.CONNECTED)first.countDown();});
+    assertTrue(first.await(2, TimeUnit.SECONDS)); session.openService("shell:");
+    Thread caller = Thread.currentThread();
+    session.connect("USB car", () -> {assertNotSame(caller,Thread.currentThread()); return usb;},
+        (s,m) -> {if(s==ConnectionState.CONNECTED)second.countDown();});
+    assertTrue(second.await(2, TimeUnit.SECONDS)); assertTrue(closed.await(2,TimeUnit.SECONDS));
+    assertTrue(tcp.closed); session.disconnect();
+  }
+
   @Test
   public void connectsThroughAuthorizationAndReplacesOldTransport() throws Exception {
     List<Transport> transports = new ArrayList<>();
