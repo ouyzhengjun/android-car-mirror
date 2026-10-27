@@ -27,7 +27,7 @@ final class UsbAdbStream implements Closeable {
       UsbAdbTransport.await(this, end);
     }
     check();
-    if (closed) throw new ConnectException("ADB service rejected");
+    if (closed && remote == 0) throw new ConnectException("ADB service rejected");
   }
 
   private void check() throws IOException {

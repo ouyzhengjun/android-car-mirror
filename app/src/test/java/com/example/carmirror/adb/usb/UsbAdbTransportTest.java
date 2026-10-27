@@ -417,6 +417,31 @@ public class UsbAdbTransportTest {
   }
 
   @Test
+  public void acknowledgedOpenPreservesBufferedDataWhenPeerClosesBeforeOpenerResumes()
+      throws Exception {
+    UsbAdbStream stream = new UsbAdbStream(transport, 1);
+    CountDownLatch openerStarted = new CountDownLatch(1);
+    Future<AdbChannel> opened;
+    synchronized (stream) {
+      opened = jobs.submit(() -> {
+        openerStarted.countDown();
+        stream.opened();
+        return stream.channel();
+      });
+      assertTrue(openerStarted.await(1, TimeUnit.SECONDS));
+      // Hold the monitor so the opener cannot resume until all three packets arrive.
+      stream.receive(new AdbPacket(AdbPacket.OKAY, 42, 1, new byte[0]));
+      stream.receive(new AdbPacket(AdbPacket.WRTE, 42, 1, new byte[] {7, 8}));
+      stream.receive(new AdbPacket(AdbPacket.CLSE, 42, 1, new byte[0]));
+    }
+    AdbChannel channel = opened.get(1, TimeUnit.SECONDS);
+    assertEquals(7, channel.input().read());
+    assertEquals(8, channel.input().read());
+    assertEquals(-1, channel.input().read());
+    assertNull(io.packets.poll(40, TimeUnit.MILLISECONDS));
+  }
+
+  @Test
   public void closeRacingDispatchStillClosesLateRemoteOpen() throws Exception {
     connected();
     UsbAdbStream stream = new UsbAdbStream(transport, 1);
