@@ -57,6 +57,6 @@ T26FL 的 display 0 是 `5120×1600`，左主屏、右副屏各 `2560×1600`；�
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。最低 Android 5.0（API 21）；minSdk 和 JVM 测试不能证明全部系统/车机兼容。当前在 API 36 平板上验证了安装、主页三块布局（竖屏与横屏）、无 OTG 等待流程、无线 TCP ADB 连接与 RSA 授权、shell 命令与退出码、读取显示尺寸、scrcpy 上传启动、视频解码渲染、退出浮窗拖动与长按 3 秒退出、退出后保留连接、每设备设置持久化与隔离；另在局域网其他 adbd 设备上验证了命令执行。API 21–35 运行、实际 USB 视频/触控、触控落点与本次 T26FL 无线投屏仍待验证。历史无线结果见[2026-10-20 验证记录](docs/verification/2026-10-20-device-check.md)，不替代本次验收。
+APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。最低 Android 5.0（API 21）；minSdk 和 JVM 测试不能证明全部系统/车机兼容。当前在 API 36 平板上验证了安装、主页三块布局（竖屏与横屏）、无 OTG 等待流程、无线 TCP ADB 连接与 RSA 授权、shell 命令与退出码、读取显示尺寸、scrcpy 上传启动、视频解码渲染、退出浮窗拖动与长按 3 秒退出、退出后保留连接、每设备设置持久化与隔离；另在局域网其他 adbd 设备上验证了命令执行。在 T26FL 车机上验证了无线连接、读取 `5120 × 1600`、全屏/仅左主屏/仅右副屏三种画面、触控落点（左屏点导航/主页/Dock 均正确触发车机应用）和长按退出。API 21–35 运行、平板→车机 USB OTG 直连、多台 USB ADB 设备与 hub 选择、自定义裁切边界与缩放旋转仍待验证。历史无线结果见[2026-10-20 验证记录](docs/verification/2026-10-20-device-check.md)，不替代本次验收。
 
 应用不提供音频、录屏、文件管理、后台常驻服务或开机自启。Manifest 申请 INTERNET，并声明可选 USB Host feature；USB 设备访问由系统单独授权。退出图标是投屏页内控件。ADB 私钥保存在应用私有目录。若 `/data/local/tmp` 不可写，会尝试共享存储上传 server，无需 root。第三方 server 的来源、校验值与许可证见[第三方声明](THIRD_PARTY_NOTICES.md)。
