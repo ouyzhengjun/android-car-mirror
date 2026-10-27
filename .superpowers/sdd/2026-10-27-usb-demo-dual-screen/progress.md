@@ -1,0 +1,47 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-10-27-usb-demo-dual-screen.md
+
+Worktree: /Users/ouyangzhenjun/project/AI_Chatgtp/android-car-mirror/.worktrees/implementation
+Starting commit: 070c630aa047252599a5b2308f58cf5bba6ce359
+Baseline: `./gradlew testDebugUnitTest assembleDebug --offline` completed with BUILD SUCCESSFUL on 2026-10-27; 39 actionable tasks up-to-date. Existing branch contains prior wireless ADB/scrcpy implementation and its 2026-10-20 hardware verification.
+
+## Preflight task consistency
+
+| Task(s) | Produce / consume or internal check | Finding |
+| --- | --- | --- |
+| 1 | Settings model, crop and ScrcpyLauncher command tests | Consistent. `MirrorOptions.java` is explicitly produced for Task 5. |
+| 2 | USB protocol core, `UsbIo`, `UsbAdbTransport` and fake-IO tests | Consistent but large; implementation must keep protocol framing and stream demultiplexing in separate classes. |
+| 3 | AndroidUsbIo and repository consume `UsbIo`/candidate concept | Consistent. Android hardware classes stay outside pure protocol tests. |
+| 4 | `AdbSession` supplier and `ConnectionOwner` consume USB transport | Consistent if supplier contract throws `Exception` and retains existing TCP overload. |
+| 5 | Three UI sections, demo state machine and MirrorActivity result | Consistent; foreground rule prevents background Activity launches. |
+| 6 | Hardware verification consumes Tasks 1–5 | Consistent; unavailable USB ADB physical function must be reported, not counted as a pass. |
+| 1 ↔ 5 | MirrorOptions produced by settings and passed into MirrorActivity/ScrcpyLauncher | Consistent; intent holds an immutable settings snapshot or a validated serialized equivalent. |
+| 1 ↔ 6 | Crop presets and validation verified on T26FL | Consistent; main=left, secondary=right. |
+| 2 ↔ 3 | UsbIo abstraction produced by Task 2, implemented by AndroidUsbIo Task 3 | Consistent; partial read/write contract must match. |
+| 2 ↔ 4 | UsbAdbTransport implements existing AdbSession.Transport | Consistent; Task 4 may widen connect entry point without duplicating shell/sync. |
+| 3 ↔ 4 | UsbCandidate/UsbIo discovery and permission consumed by ConnectionOwner | Consistent; USB device path identifies two same-model devices while attached. |
+| 3 ↔ 5 | USB attach/detach/permission events drive UI and demo candidates | Consistent; registration lifetime follows foreground scope. |
+| 4 ↔ 5 | DeviceCatalog/ConnectionOwner feed dashboard and demo actions | Consistent; one active session is shared across modes. |
+| 5 ↔ 6 | Demo exit and reconnect behavior verified on device | Consistent; long hold disables demo, unplug returns to listening. |
+
+Ruling: Task 4's `TransportSupplier` will be a functional interface in `AdbSession` with `Transport create() throws Exception`; USB transport creation occurs only after system USB permission. This preserves existing TCP `connect(Endpoint,Listener)` while reusing its watchdog and stream ownership — if that interface shape proves inadequate, Task 4 must adapt tests and document the change.
+
+Ruling: An unpermitted USB candidate is keyed by Android's attached-device path for current-session selection; a human-friendly serial is optional only after permission. USB device paths may change after reinsertion, so saved projection settings use a more stable VID/PID/serial key when available or fall back to a device-type key — if duplicate same-model devices lack serials, settings may be shared between them, but selection remains distinct while attached.
+
+Ruling: TB522FU (Android 15) baseline UI rejects `.` in the IPv4 field because MainActivity uses `TYPE_CLASS_PHONE`; Task 5 must replace that input mode with one that accepts complete IPv4 text before wireless acceptance — if not corrected, the newly connected T26FL cannot be entered on this tablet despite a healthy TCP endpoint.
+
+Task 1: complete (070c630..eaef75e, task review spec PASS / quality APPROVE). Controller independently ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL; 76 existing/new unit tests in XML, 0 failures. Physical crop/touch verification remains in Task 6.
+
+Task 2: fix round 1/5 (1 addressed, 0 open — successful OPEN followed by immediate WRTE/CLSE preserves buffered output and EOF; commits 8fdc598..f5ad13a). Original implementer hit a model usage limit and first repair agent hit model capacity; a fresh gpt-6.1-terra repair completed the scoped fix and independent re-review found no new important breakage.
+Task 2: complete (eaef75e..f5ad13a, initial task review requested the above fix; scoped re-review ADDRESSED). Controller independently ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL; 99 unit tests in XML, 0 failures. Physical OTG throughput/interoperability remains Task 6 acceptance.
+
+Task 3: complete (f5ad13a..e13be29, task review spec PASS / quality APPROVE; no actionable findings). Controller independently ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL; 108 unit tests in XML, 0 failures. TB522FU reports USB Host support, but physical OTG/permission/ADB acceptance remains Task 6 because it is currently attached to the development computer.
+
+Task 4: complete (e13be29..80c6ccc, task review spec PASS / quality APPROVE; no actionable findings). Controller independently ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL; 113 unit tests in XML, 0 failures. USB/TCP session switching and catalog tests pass; UI integration is Task 5.
+
+Task 5: complete (80c6ccc..070c317, initial task review found two P2 issues; fix round 1/5 addressed both but exposed USB serial preference restoration P2; fix round 2/5 addressed that and TB522FU Chinese IME dotted-IP input; scoped re-review ADDRESSED, no important findings). Controller independently ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL; 139 unit tests in XML, 0 failures. APK installed on TB522FU, three-section home rendered in portrait; full hardware acceptance remains Task 6.
+
+Task 6: documentation/evidence portion complete (070c317..7c9f962, documentary review spec PASS / quality APPROVE). APK installed on TB522FU and available UI/empty-OTG/IPv4 normalization flows checked. T26FL 192.168.43.160:5555 currently returns Connection refused; tablet is USB device to Mac, so live T26FL video/touch and tablet→car OTG acceptance are PENDING, as are multiple USB devices and API 21–35 runtime. The verification record explicitly marks these incomplete; full Task 6 physical acceptance is not claimed.
+
+Task 6 continued (2026-10-27 evening): the TB522FU was re-attached to the development computer with USB debugging authorized. The T26FL still refuses TCP 5555, so the car could not be used as target; the tablet's own adbd was enabled with `adb tcpip 5555` to exercise the wireless path end to end. That surfaced a real defect: libadb-android 3.1.1 raises `IOException("Stream closed.")` instead of EOF when the peer closes a stream after its last payload was drained, so the first shell command after connecting (and the `wm size` call behind "开始投屏") tore the ADB session down with "Stream closed.".
+
+Fix: new `AdbPeerInputStream` translates the library's peer-close into end of stream and keeps the signed-byte correction; `LibAdbTransport` now uses it, which covers the command, sync, control and video read paths. Controller ran `./gradlew testDebugUnitTest assembleDebug --offline`: BUILD SUCCESSFUL, 143 unit tests, 0 failures (4 new tests in `AdbPeerInputStreamTest`). Re-installed APK on TB522FU and re-ran the flow: connect + RSA authorisation, `echo one` (exit code 0, session stays up), display size read (2560 × 3840), scrcpy server upload and virtual display creation, video decode and render, exit handle drag and 3-second hold exit, ADB session retained after exit, per-device settings persistence/isolation (bitrate 12 for one device, default 8 for another), landscape home layout. Command execution also verified against three other adbd hosts on the LAN (192.168.43.46 / .56 / .204). Still pending and explicitly not claimed: T26FL dual-screen video and touch landing points, tablet→car OTG, multiple USB ADB devices, API 21–35 runtime. Evidence appended to `docs/verification/2026-10-27-t26fl-usb-demo.md`.
