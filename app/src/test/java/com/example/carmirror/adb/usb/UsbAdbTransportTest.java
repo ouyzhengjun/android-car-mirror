@@ -149,10 +149,11 @@ public class UsbAdbTransportTest {
               return null;
             });
     byte[] p = next("WRTE");
-    assertEquals(4096, p.length - 24);
+    assertEquals(UsbAdbTransport.WRITE_CHUNK, p.length - 24);
     assertFalse(f.isDone());
     feed("OKAY", 11, 1, new byte[0]);
-    assertEquals(904, next("WRTE").length - 24);
+    // 4000 bytes still pending, so the next chunk keeps the full size until the tail.
+    assertEquals(UsbAdbTransport.WRITE_CHUNK, next("WRTE").length - 24);
     a.close();
     next("CLSE");
     try {

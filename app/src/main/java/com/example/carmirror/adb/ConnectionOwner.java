@@ -3,6 +3,7 @@ package com.example.carmirror.adb;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import com.example.carmirror.Endpoint;
 import com.example.carmirror.adb.usb.*;
 import java.util.List;
@@ -87,6 +88,7 @@ public final class ConnectionOwner {
     catalog.select(DeviceEntry.usbId(candidate));
     catalog.usbPermission(DeviceEntry.usbId(candidate),true);
     connectionEpoch++;
+    Log.i("CarMirrorADB","connecting over USB: "+candidate);
     update(ConnectionState.CONNECTING,"正在连接 "+candidate);
     session.connect(candidate.toString(),()->{
       try{return new UsbAdbTransport(io,keys.load());}

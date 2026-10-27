@@ -1,6 +1,7 @@
 package com.example.carmirror.adb.usb;
 
 import com.example.carmirror.adb.*;
+import android.util.Log;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.security.*;
@@ -10,6 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 /** One receiver dispatches bounded, independently flow-controlled ADB streams. */
 public final class UsbAdbTransport implements AdbSession.Transport {
+  private static final String TAG = "CarMirrorUsb";
   private final UsbIo io;
   private final PrivateKey key;
   private final byte[] publicKey;
@@ -21,6 +23,13 @@ public final class UsbAdbTransport implements AdbSession.Transport {
   private Thread receiver;
   private int nextId = 1;
   volatile int maxPayload = AdbPacket.MAX_PAYLOAD;
+  /**
+   * Payload bytes per WRTE. A transfer whose length is an exact multiple of the USB bulk max
+   * packet size ends without a short packet, so the peer's gadget keeps waiting for more data
+   * and the stream stalls until the write deadline. T26FL hangs on 1024 and 4096, works on 1000.
+   */
+  static final int WRITE_CHUNK = 1000;
+  volatile int writeChunk = WRITE_CHUNK;
 
   public UsbAdbTransport(UsbIo io, AdbKeyStore.Credentials credentials) throws IOException {
     this(io, credentials.privateKey, credentials.certificate.getPublicKey(), 10000);
@@ -44,6 +53,7 @@ public final class UsbAdbTransport implements AdbSession.Transport {
       if (started) throw new IOException("USB transport already started");
       started = true;
     }
+    Log.i(TAG, "USB ADB transport starting, sending CNXN");
     try {
       send(
           new AdbPacket(
@@ -84,6 +94,8 @@ public final class UsbAdbTransport implements AdbSession.Transport {
   }
 
   void send(AdbPacket packet, long end) throws IOException {
+    if (verbose(packet.command))
+      Log.i(TAG, "-> " + name(packet.command) + " a0=" + packet.arg0 + " a1=" + packet.arg1 + " len=" + packet.payload.length);
     try {
       UsbAdbProtocol.check(end);
       if (!writer.tryLock(Math.max(1, end - System.nanoTime()), TimeUnit.NANOSECONDS))
@@ -114,7 +126,10 @@ public final class UsbAdbTransport implements AdbSession.Transport {
     try {
       while (true) {
         check();
-        dispatch(UsbAdbProtocol.read(io));
+        AdbPacket packet = UsbAdbProtocol.read(io);
+        if (verbose(packet.command))
+          Log.i(TAG, "<- " + name(packet.command) + " a0=" + packet.arg0 + " a1=" + packet.arg1 + " len=" + packet.payload.length);
+        dispatch(packet);
       }
     } catch (Exception e) {
       fail(e instanceof IOException ? (IOException) e : new IOException("ADB protocol failure", e));
@@ -124,6 +139,7 @@ public final class UsbAdbTransport implements AdbSession.Transport {
   private void dispatch(AdbPacket p) throws Exception {
     if (!ready) {
       if (p.command == AdbPacket.AUTH && p.arg0 == 1 && p.arg1 == 0 && p.payload.length == 20) {
+        Log.i(TAG, "device requested RSA authentication, replying with " + (signed ? "public key" : "signature"));
         byte[] response = signed ? publicKey : UsbAdbProtocol.sign(key, p.payload);
         int type = signed ? 3 : 2;
         signed = true;
@@ -140,8 +156,10 @@ public final class UsbAdbTransport implements AdbSession.Transport {
           ready = true;
           notifyAll();
         }
+        Log.i(TAG, "device handshake accepted, maxPayload=" + maxPayload);
         return;
       }
+      Log.i(TAG, "invalid ADB handshake: command=" + p.command + " arg0=" + p.arg0 + " arg1=" + p.arg1);
       throw new IOException("Invalid ADB handshake");
     }
     if (p.command != AdbPacket.OKAY && p.command != AdbPacket.WRTE && p.command != AdbPacket.CLSE)
@@ -170,6 +188,7 @@ public final class UsbAdbTransport implements AdbSession.Transport {
   @Override
   public AdbChannel open(String service) throws IOException {
     if (service == null || service.indexOf('\0') >= 0) throw new IOException("Invalid service");
+    Log.i(TAG, "opening USB ADB service: " + service);
     byte[] name = (service + '\0').getBytes(StandardCharsets.UTF_8);
     UsbAdbStream stream;
     synchronized (this) {
@@ -212,6 +231,26 @@ public final class UsbAdbTransport implements AdbSession.Transport {
     }
     for (UsbAdbStream stream : active) stream.fail(cause);
     if (reader != null && reader != Thread.currentThread()) reader.interrupt();
+  }
+
+  /** Stream lifecycle only; per-write OKAY/WRTE would log hundreds of lines per upload. */
+  private static boolean verbose(int command) {
+    return command == AdbPacket.CNXN
+        || command == AdbPacket.AUTH
+        || command == AdbPacket.OPEN
+        || command == AdbPacket.CLSE;
+  }
+
+  private static String name(int command) {
+    switch (command) {
+      case AdbPacket.CNXN: return "CNXN";
+      case AdbPacket.AUTH: return "AUTH";
+      case AdbPacket.OPEN: return "OPEN";
+      case AdbPacket.OKAY: return "OKAY";
+      case AdbPacket.WRTE: return "WRTE";
+      case AdbPacket.CLSE: return "CLSE";
+      default: return String.format("0x%08x", command);
+    }
   }
 
   @Override

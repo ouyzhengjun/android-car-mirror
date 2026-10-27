@@ -378,9 +378,10 @@ public final class AdbSession implements AdbGateway {
     if (size < 0 || path.indexOf('\0') >= 0 || path.getBytes(StandardCharsets.UTF_8).length > 1000)
       throw new IOException("无效的推送路径或大小");
     try (AdbChannel channel = openService("sync:")) {
-      DataOutputStream out = new DataOutputStream(channel.output());
+      OutputStream out = channel.output();
       byte[] name = (path + ",33206").getBytes(StandardCharsets.UTF_8);
-      packet(out, "SEND", name.length);
+      // Each write is one ADB packet, so a DataOutputStream would cost one round trip per byte.
+      out.write(syncHeader("SEND", name.length));
       out.write(name);
       byte[] data = new byte[65536];
       long remaining = size;
@@ -388,11 +389,11 @@ public final class AdbSession implements AdbGateway {
         int n = source.read(data, 0, (int) Math.min(data.length, remaining));
         if (n < 0) throw new EOFException("源文件过短");
         if (n == 0) continue;
-        packet(out, "DATA", n);
+        out.write(syncHeader("DATA", n));
         out.write(data, 0, n);
         remaining -= n;
       }
-      packet(out, "DONE", (int) (System.currentTimeMillis() / 1000));
+      out.write(syncHeader("DONE", (int) (System.currentTimeMillis() / 1000)));
       out.flush();
       DataInputStream in = new DataInputStream(channel.input());
       byte[] id = new byte[4];
@@ -407,9 +408,14 @@ public final class AdbSession implements AdbGateway {
     }
   }
 
-  private static void packet(DataOutputStream out, String id, int length) throws IOException {
-    out.writeBytes(id);
-    out.writeInt(Integer.reverseBytes(length));
+  /** One buffered sync request header; a byte-at-a-time write costs a USB round trip each. */
+  private static byte[] syncHeader(String id, int length) {
+    byte[] head = id.getBytes(StandardCharsets.US_ASCII);
+    int value = Integer.reverseBytes(length);
+    return new byte[] {
+      head[0], head[1], head[2], head[3],
+      (byte) (value >>> 24), (byte) (value >>> 16), (byte) (value >>> 8), (byte) value
+    };
   }
 
   private static void close(Closeable c) {

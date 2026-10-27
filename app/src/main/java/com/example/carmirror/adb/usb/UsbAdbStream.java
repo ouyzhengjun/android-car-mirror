@@ -22,12 +22,21 @@ final class UsbAdbStream implements Closeable {
 
   synchronized void opened() throws IOException {
     long end = UsbAdbProtocol.deadline(transport.timeoutMs);
-    while (remote == 0 && !closed) {
-      check();
-      UsbAdbTransport.await(this, end);
+    try {
+      while (remote == 0 && !closed) {
+        check();
+        UsbAdbTransport.await(this, end);
+      }
+    } catch (IOException timeout) {
+      android.util.Log.i("CarMirrorUsb", "OPEN for local id " + local + " not acknowledged: " + timeout);
+      throw timeout;
     }
     check();
-    if (closed && remote == 0) throw new ConnectException("ADB service rejected");
+    if (closed && remote == 0) {
+      android.util.Log.i("CarMirrorUsb", "OPEN for local id " + local + " rejected by peer");
+      throw new ConnectException("ADB service rejected");
+    }
+    android.util.Log.i("CarMirrorUsb", "stream local=" + local + " remote=" + remote + " open");
   }
 
   private void check() throws IOException {
@@ -128,7 +137,7 @@ final class UsbAdbStream implements Closeable {
           public synchronized void write(byte[] b, int off, int len) throws IOException {
             if (off < 0 || len < 0 || off > b.length - len) throw new IndexOutOfBoundsException();
             while (len > 0) {
-              int n = Math.min(len, transport.maxPayload);
+              int n = Math.min(len, Math.min(transport.maxPayload, transport.writeChunk));
               long end = UsbAdbProtocol.deadline(transport.timeoutMs);
               synchronized (UsbAdbStream.this) {
                 check();
@@ -149,6 +158,8 @@ final class UsbAdbStream implements Closeable {
                   if (closed) throw new IOException("ADB stream closed");
                 }
               } catch (IOException e) {
+                android.util.Log.i("CarMirrorUsb", "WRTE local=" + local + " offset=" + off
+                        + " failed: " + e);
                 UsbAdbStream.this.close();
                 throw e;
               }
