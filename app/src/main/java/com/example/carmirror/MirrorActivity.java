@@ -10,6 +10,9 @@ import com.example.carmirror.adb.AdbSession;
 import com.example.carmirror.adb.ConnectionOwner;
 import com.example.carmirror.scrcpy.*;
 import com.example.carmirror.ui.ExitHandle;
+import com.example.carmirror.ui.ForegroundDevices;
+import com.example.carmirror.ui.MirrorIntent;
+import com.example.carmirror.ui.DisplaySize;
 import java.io.IOException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -17,6 +20,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Borrows the process-owned live ADB connection; owns only scrcpy and decoder resources. */
 public final class MirrorActivity extends Activity implements SurfaceHolder.Callback {
   private AdbSession adb;
+  private ForegroundDevices foreground;
+  private MirrorOptions options;
   private ScrcpySession session;
   private VideoDecoder decoder;
   private volatile TouchController touch;
@@ -43,6 +48,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     handler.postDelayed(this,250);}};
 
   @Override public void onCreate(Bundle state){super.onCreate(state);
+    foreground=ForegroundDevices.get(this);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     immersive();
     root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);setContentView(root);
@@ -51,14 +57,16 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     surface.setOnTouchListener((v,e)->forward(e,surface.getX(),surface.getY()));
     root.setOnTouchListener((v,e)->forward(e,0,0));
     status=new TextView(this);status.setTextColor(Color.WHITE);status.setText("正在启动投屏…");root.addView(status);
-    exit=new ExitHandle(this,()->{closeSession();finish();});int size=(int)(64*getResources().getDisplayMetrics().density);FrameLayout.LayoutParams handle=new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.RIGHT);root.addView(exit,handle);
+    exit=new ExitHandle(this,()->{foreground.demo.userExit();setResult(RESULT_OK);closeSession();finish();});int size=(int)(64*getResources().getDisplayMetrics().density);FrameLayout.LayoutParams handle=new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.RIGHT);root.addView(exit,handle);
     // Gravity only establishes the initial position; explicit x/y then support clamped dragging.
     root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{layoutVideo();exit.setX(Math.max(0,Math.min(root.getWidth()-exit.getWidth(),exit.getX())));exit.setY(Math.max(0,Math.min(root.getHeight()-exit.getHeight(),exit.getY())));});
     adb=ConnectionOwner.get(this);if(!ConnectionOwner.isConnected()){fail(new IOException("连接已失效，请返回后重新连接"));return;}
+    try{options=MirrorIntent.read(getIntent());}catch(IllegalArgumentException e){fail(e);return;}
     decoder=new VideoDecoder();
     handler.post(health);
     video.execute(()->{try{
-      ScrcpySession launcher=new ScrcpyLauncher(getApplicationContext());
+      if(options.crop!=null){com.example.carmirror.adb.CommandResult display=adb.shell("wm size -d "+options.displayId,5000);int[] originalSize=DisplaySize.parse(display.output());options.crop.validateWithin(originalSize[0],originalSize[1]);}
+      ScrcpySession launcher=new ScrcpyLauncher(getApplicationContext(),options);
       synchronized(this){if(closed.get())return;session=launcher;}
       ScrcpySession.Streams streams=launcher.start(adb);
       if(closed.get())return;
@@ -100,6 +108,8 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   }
   private void cancelTouch(){VideoGeometry g=geometry;submit(()->{if(touch!=null)touch.onTouch(new TouchSample(3,0,0,0,0),g);});}
   @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();exit.cancel();geometry=null;root.post(this::layoutVideo);}
+  @Override protected void onStart(){super.onStart();foreground.detached=()->{closeSession();finish();};foreground.start();}
+  @Override protected void onStop(){foreground.detached=null;foreground.stop();if(!isChangingConfigurations()&&!isFinishing()){closeSession();finish();}super.onStop();}
   @Override protected void onResume(){super.onResume();resumed=true;attachSurfaceIfReady();}
   @Override protected void onPause(){resumed=false;cancelTouch();exit.cancel();if(decoder!=null&&!closed.get())decoder.attach(null);super.onPause();}
   @Override public void onBackPressed(){submit(()->{if(writer!=null){writer.keycode(0,4);writer.keycode(1,4);}});}
@@ -120,7 +130,8 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private void fail(Exception error){fail(error,false);}
   private void fail(Exception error,boolean checkAdb){runOnUiThread(()->{
     if(closed.get())return;
-    if(checkAdb&&isLinkFailure(error)&&reserveReconnect()){
+    foreground.demo.failed();
+    if(resumed&&checkAdb&&isLinkFailure(error)&&com.example.carmirror.adb.ConnectionOwner.catalog().selected()!=null&&com.example.carmirror.adb.ConnectionOwner.catalog().selected().tcp!=null&&reserveReconnect()){
       final int attempt=reconnectAttempts;
       android.util.Log.w("MirrorReconnect","link failure: "+error.getMessage()+" attempt="+attempt);
       status.setText("ADB 连接已断开，正在重连（第 "+attempt+"/"+MAX_RECONNECTS+" 次）…");
@@ -142,23 +153,23 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       if(ConnectionOwner.reconnect()){
         long deadline=android.os.SystemClock.uptimeMillis()+12000;
         while(android.os.SystemClock.uptimeMillis()<deadline&&!ConnectionOwner.isConnected()){
-          if(isFinishing()||isDestroyed())return;
+          if(!resumed||isFinishing()||isDestroyed())return;
           try{Thread.sleep(200);}catch(InterruptedException e){return;}
         }
       }
       if(ConnectionOwner.isConnected()){
         android.util.Log.w("MirrorReconnect","reconnected, restarting mirror");
-        runOnUiThread(()->{if(!isFinishing()&&!isDestroyed())recreate();});
+        runOnUiThread(()->{if(resumed&&!isFinishing()&&!isDestroyed())recreate();});
         return;
       }
       if(reserveReconnect()){
         final int next=reconnectAttempts;
         android.util.Log.w("MirrorReconnect","retry attempt="+next);
-        runOnUiThread(()->{if(isFinishing()||isDestroyed())return;status.setText("ADB 连接已断开，正在重连（第 "+next+"/"+MAX_RECONNECTS+" 次）…");});
+        runOnUiThread(()->{if(!resumed||isFinishing()||isDestroyed())return;status.setText("ADB 连接已断开，正在重连（第 "+next+"/"+MAX_RECONNECTS+" 次）…");});
         startReconnect(next);
         return;
       }
-      runOnUiThread(()->{if(isFinishing()||isDestroyed())return;status.setText("投屏失败：ADB 连接已断开\n请按住 × 3 秒退出后重新连接");status.setVisibility(View.VISIBLE);});
+      runOnUiThread(()->{if(!resumed||isFinishing()||isDestroyed())return;status.setText("投屏失败：ADB 连接已断开\n请按住 × 3 秒退出后重新连接");status.setVisibility(View.VISIBLE);});
     },"mirror-reconnect").start();
   }
   /** All shutdown paths converge here. Closing scrcpy channels releases reads while ADB stays connected. */
