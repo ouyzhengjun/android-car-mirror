@@ -13,6 +13,7 @@ import com.example.carmirror.ui.ExitHandle;
 import com.example.carmirror.ui.ForegroundDevices;
 import com.example.carmirror.ui.MirrorIntent;
 import com.example.carmirror.ui.DisplaySize;
+import com.example.carmirror.ui.CropValidationGate;
 import java.io.IOException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,6 +23,8 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private AdbSession adb;
   private ForegroundDevices foreground;
   private MirrorOptions options;
+  private CropValidationGate cropGate;
+  private final ExecutorService validation=Executors.newSingleThreadExecutor();
   private ScrcpySession session;
   private VideoDecoder decoder;
   private volatile TouchController touch;
@@ -61,7 +64,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     // Gravity only establishes the initial position; explicit x/y then support clamped dragging.
     root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{layoutVideo();exit.setX(Math.max(0,Math.min(root.getWidth()-exit.getWidth(),exit.getX())));exit.setY(Math.max(0,Math.min(root.getHeight()-exit.getHeight(),exit.getY())));});
     adb=ConnectionOwner.get(this);if(!ConnectionOwner.isConnected()){fail(new IOException("连接已失效，请返回后重新连接"));return;}
-    try{options=MirrorIntent.read(getIntent());}catch(IllegalArgumentException e){fail(e);return;}
+    try{options=MirrorIntent.read(getIntent());cropGate=new CropValidationGate(options.crop);}catch(IllegalArgumentException e){fail(e);return;}
     decoder=new VideoDecoder();
     handler.post(health);
     video.execute(()->{try{
@@ -76,13 +79,37 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       controlDrain.start();
       VideoPacketReader reader=new VideoPacketReader();VideoPacketReader.VideoPacket packet;
       while(!closed.get()&&(packet=reader.readNext(streams.video().input()))!=null){
-        if(packet.isSession()){reconnectAttempts=0;final int w=packet.width,h=packet.height;runOnUiThread(()->{if(closed.get())return;streamWidth=w;streamHeight=h;layoutVideo();cancelTouch();status.setVisibility(View.GONE);});}
+        if(packet.isSession()){reconnectAttempts=0;validateGeometry(packet.width,packet.height);}
         else decoder.noteNewest(packet.ptsUs);
         decoder.offer(packet);
       }
       if(!closed.get())fail(new IOException("投屏连接已断开"),true);
     }catch(Exception error){if(!closed.get())fail(error,decoder==null||decoder.failure()==null);}
     finally{if(closed.get()&&session!=null)session.stop();}});
+  }
+  /** Suspend input immediately, then query ORIGINAL display bounds off the UI/video threads. */
+  private void validateGeometry(final int width,final int height){
+    if(closed.get()||cropGate==null)return;
+    final long token=cropGate.begin();
+    runOnUiThread(()->{if(closed.get()||!cropGate.current(token))return;cancelTouch();status.setText("显示尺寸变化，正在校验投屏区域…");status.setVisibility(View.VISIBLE);});
+    try{validation.execute(()->{
+      try{
+        com.example.carmirror.adb.CommandResult result=adb.shell("wm size -d "+options.displayId,5000);
+        int[] bounds=result.timedOut()?new int[]{0,0}:DisplaySize.parse(result.output());
+        runOnUiThread(()->{
+          if(closed.get()||!cropGate.current(token))return;
+          try{
+            // The UI update and unlocking occur together; queued old touches stay blocked.
+            if(options.crop!=null)options.crop.validateWithin(bounds[0],bounds[1]);
+            streamWidth=width;streamHeight=height;layoutVideo();
+            cropGate.validate(token,bounds[0],bounds[1]);status.setVisibility(View.GONE);
+          }catch(IllegalArgumentException error){invalidCrop(error);}
+        });
+      }catch(Exception error){runOnUiThread(()->{if(!closed.get()&&cropGate.current(token))invalidCrop(error);});}
+    });}catch(RejectedExecutionException ignored){}
+  }
+  private void invalidCrop(Exception error){
+    fail(new IllegalArgumentException("投屏区域设置已失效或无法确认显示尺寸："+error.getMessage()+"；请长按 × 退出，在主页重新读取尺寸并修改区域"),false);
   }
   private void immersive(){getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);}
   @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus)immersive();}
@@ -97,17 +124,19 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     try{controls.execute(()->{if(closed.get())return;controlSince.set(android.os.SystemClock.uptimeMillis());
       try{action.run();}catch(Exception error){fail(error,true);}finally{controlSince.set(0);}});return true;}
     catch(RejectedExecutionException error){return false;}}
-  private boolean forward(MotionEvent e,float offsetX,float offsetY){VideoGeometry g=geometry;if(g==null||closed.get())return true;
+  private boolean forward(MotionEvent e,float offsetX,float offsetY){if(cropGate==null)return true;
+    final long touchGeneration=cropGate.generation();
+    VideoGeometry g=geometry;if(g==null||closed.get()||!cropGate.allowsTouch(touchGeneration))return true;
     int action=e.getActionMasked();int start=action==MotionEvent.ACTION_MOVE?0:e.getActionIndex();int end=action==MotionEvent.ACTION_MOVE?e.getPointerCount():start+1;
     for(int i=start;i<end;i++){TouchSample sample=new TouchSample(action,e.getPointerId(i),e.getX(i)+offsetX,e.getY(i)+offsetY,e.getPressure(i));
       boolean move=sample.action==TouchSample.MOVE;
       if(move&&!movePending.compareAndSet(false,true))continue;
-      boolean queued=submit(()->{try{if(touch!=null)touch.onTouch(sample,g);}finally{if(move)movePending.set(false);}});
+      boolean queued=submit(()->{try{if(touch!=null&&cropGate.allowsTouch(touchGeneration))touch.onTouch(sample,g);}finally{if(move)movePending.set(false);}});
       if(!queued&&move)movePending.set(false);}
     return true;
   }
   private void cancelTouch(){VideoGeometry g=geometry;submit(()->{if(touch!=null)touch.onTouch(new TouchSample(3,0,0,0,0),g);});}
-  @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();exit.cancel();geometry=null;root.post(this::layoutVideo);}
+  @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();exit.cancel();geometry=null;if(streamWidth>0)validateGeometry(streamWidth,streamHeight);}
   @Override protected void onStart(){super.onStart();foreground.detached=()->{closeSession();finish();};foreground.start();}
   @Override protected void onStop(){foreground.detached=null;foreground.stop();if(!isChangingConfigurations()&&!isFinishing()){closeSession();finish();}super.onStop();}
   @Override protected void onResume(){super.onResume();resumed=true;attachSurfaceIfReady();}
@@ -173,7 +202,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     },"mirror-reconnect").start();
   }
   /** All shutdown paths converge here. Closing scrcpy channels releases reads while ADB stays connected. */
-  private void closeSession(){if(!closed.compareAndSet(false,true))return;handler.removeCallbacks(health);geometry=null;controls.shutdownNow();video.shutdownNow();
+  private void closeSession(){if(!closed.compareAndSet(false,true))return;handler.removeCallbacks(health);geometry=null;controls.shutdownNow();video.shutdownNow();validation.shutdownNow();
     final ScrcpySession current; synchronized(this){current=session;}
     new Thread(()->{if(current!=null)current.stop();if(decoder!=null)decoder.close();},"mirror-close").start();
   }
