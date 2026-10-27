@@ -140,7 +140,9 @@ public class MainActivity extends Activity {
   private void saveEndpoint(boolean connect) {
     final Endpoint endpoint;
     try {
-      endpoint = Endpoint.parse(hostInput.getText().toString(), portInput.getText().toString());
+      String normalizedHost=Ipv4Input.sanitize(hostInput.getText().toString());
+      hostInput.setText(normalizedHost);
+      endpoint = Endpoint.parse(normalizedHost, portInput.getText().toString());
     } catch (IllegalArgumentException error) {
       status.setText(error.getMessage());
       return;
@@ -189,7 +191,7 @@ public class MainActivity extends Activity {
         int colon = address.lastIndexOf(':');
         Endpoint target =
             Endpoint.parse(
-                colon < 0 ? address : address.substring(0, colon),
+                Ipv4Input.sanitize(colon < 0 ? address : address.substring(0, colon)),
                 colon < 0 ? "5555" : address.substring(colon + 1));
         hostInput.setText(target.host());
         portInput.setText(String.valueOf(target.port()));
