@@ -9,6 +9,7 @@ import android.widget.*;
 import com.example.carmirror.adb.AdbSession;
 import com.example.carmirror.adb.ConnectionOwner;
 import com.example.carmirror.scrcpy.*;
+import com.example.carmirror.ui.ControlQueue;
 import com.example.carmirror.ui.ExitHandle;
 import com.example.carmirror.ui.ForegroundDevices;
 import com.example.carmirror.ui.MirrorIntent;
@@ -32,7 +33,11 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private Thread controlDrain;
   private volatile VideoGeometry geometry;
   private final ExecutorService video=Executors.newSingleThreadExecutor();
-  private final ExecutorService controls=new ThreadPoolExecutor(1,1,0L,TimeUnit.MILLISECONDS,new ArrayBlockingQueue<Runnable>(32));
+  // Control writes are stop-and-wait on the ADB stream, so a slow one holds up the queue behind
+  // it. Input older than this budget is dropped instead of replayed somewhere the user never
+  // touched.
+  private static final long CONTROL_BUDGET_MS=100;
+  private final ControlQueue controls=new ControlQueue(32);
   private final AtomicBoolean closed=new AtomicBoolean();
   // Each control write waits for an ADB READY, so a fast drag can outrun the link.
   // Only the newest move matters; older positions are dropped instead of queued.
@@ -57,7 +62,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       // seconds while video keeps playing. Failing on the first slow frame costs a full
       // reconnect, so warn early and only give up when the write is clearly stuck.
       if(waited>CONTROL_STALL_WARN_MS&&!stallWarned){stallWarned=true;android.util.Log.w("CarMirrorMirror","control write pending for "+waited+" ms");}
-      if(waited>CONTROL_STALL_FAIL_MS){android.util.Log.w("CarMirrorMirror","control write stuck for "+waited+" ms");fail(new IOException("控制通道无响应"),true);return;}
+      if(waited>CONTROL_STALL_FAIL_MS){android.util.Log.w("CarMirrorMirror","control write stuck for "+waited+" ms");fail(new LinkLost("控制通道无响应"),true);return;}
     }else stallWarned=false;
     handler.postDelayed(this,250);}};
 
@@ -77,6 +82,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     adb=ConnectionOwner.get(this);if(!ConnectionOwner.isConnected()){fail(new IOException("连接已失效，请返回后重新连接"));return;}
     try{options=MirrorIntent.read(getIntent());cropGate=new CropValidationGate(options.crop);}catch(IllegalArgumentException e){fail(e);return;}
     decoder=new VideoDecoder();
+    controls.failureHandler(error->fail(error,true));
     handler.post(health);
     video.execute(()->{try{
       if(options.crop!=null){com.example.carmirror.adb.CommandResult display=adb.shell("wm size -d "+options.displayId,5000);int[] originalSize=DisplaySize.parse(display.output());options.crop.validateWithin(originalSize[0],originalSize[1]);}
@@ -86,7 +92,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
       if(closed.get())return;
       writer=new ControlMessageWriter(streams.control().output());touch=new TouchController(writer);
       // Consume device clipboard/status messages without retaining potentially unbounded text.
-      controlDrain=new Thread(()->{try{byte[] buffer=new byte[4096];while(!closed.get()&&streams.control().input().read(buffer)!=-1){}if(!closed.get())fail(new IOException("控制连接已断开"),true);}catch(IOException error){if(!closed.get())fail(error,true);}},"mirror-control-read");
+      controlDrain=new Thread(()->{try{byte[] buffer=new byte[4096];while(!closed.get()&&streams.control().input().read(buffer)!=-1){}if(!closed.get())fail(new LinkLost("控制连接已断开"),true);}catch(IOException error){if(!closed.get())fail(error,true);}},"mirror-control-read");
       controlDrain.start();
       VideoPacketReader reader=new VideoPacketReader();VideoPacketReader.VideoPacket packet;
       while(!closed.get()&&(packet=reader.readNext(streams.video().input()))!=null){
@@ -94,7 +100,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
         else decoder.noteNewest(packet.ptsUs);
         decoder.offer(packet);
       }
-      if(!closed.get())fail(new IOException("投屏连接已断开"),true);
+      if(!closed.get())fail(new LinkLost("投屏连接已断开"),true);
     }catch(Exception error){if(!closed.get())fail(error,decoder==null||decoder.failure()==null);}
     finally{if(closed.get()&&session!=null)session.stop();}});
   }
@@ -130,11 +136,11 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     if(p.width!=w||p.height!=h){p.width=w;p.height=h;surface.setLayoutParams(p);}surface.setX(next.contentLeft);surface.setY(next.contentTop);
   }
   private interface IoAction{void run()throws IOException;}
-  /** Returns false when the queue is full; stale input is dropped rather than killing the stream. */
-  private boolean submit(IoAction action){if(closed.get())return false;
-    try{controls.execute(()->{if(closed.get())return;controlSince.set(android.os.SystemClock.uptimeMillis());
-      try{action.run();}catch(Exception error){fail(error,true);}finally{controlSince.set(0);}});return true;}
-    catch(RejectedExecutionException error){return false;}}
+  /** Pointer releases must always reach the device; only move samples may be shed. */
+  private boolean submit(IoAction action){return submit(action,true,CONTROL_BUDGET_MS);}
+  private boolean submit(IoAction action,boolean keepAlive,long budgetMs){if(closed.get())return false;
+    return controls.submit(()->{if(closed.get())return;controlSince.set(android.os.SystemClock.uptimeMillis());
+      try{action.run();}catch(Exception error){fail(error,true);}finally{controlSince.set(0);}},keepAlive,budgetMs);}
   private boolean forward(MotionEvent e,float offsetX,float offsetY){if(cropGate==null)return true;
     final long touchGeneration=cropGate.generation();
     VideoGeometry g=geometry;if(g==null||closed.get()||!cropGate.allowsTouch(touchGeneration))return true;
@@ -142,7 +148,8 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     for(int i=start;i<end;i++){TouchSample sample=new TouchSample(action,e.getPointerId(i),e.getX(i)+offsetX,e.getY(i)+offsetY,e.getPressure(i));
       boolean move=sample.action==TouchSample.MOVE;
       if(move&&!movePending.compareAndSet(false,true))continue;
-      boolean queued=submit(()->{try{if(touch!=null&&cropGate.allowsTouch(touchGeneration))touch.onTouch(sample,g);}finally{if(move)movePending.set(false);}});
+      // Move samples carry no state the device needs; a release must never be dropped.
+      boolean queued=submit(()->{try{if(touch!=null&&cropGate.allowsTouch(touchGeneration))touch.onTouch(sample,g);}finally{if(move)movePending.set(false);}},!move,CONTROL_BUDGET_MS);
       if(!queued&&move)movePending.set(false);}
     return true;
   }
@@ -153,10 +160,15 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   @Override protected void onResume(){super.onResume();resumed=true;attachSurfaceIfReady();}
   @Override protected void onPause(){resumed=false;cancelTouch();exit.cancel();if(decoder!=null&&!closed.get())decoder.attach(null);super.onPause();}
   @Override public void onBackPressed(){submit(()->{if(writer!=null){writer.keycode(0,4);writer.keycode(1,4);}});}
+  /** The projection stream ended or stalled; the ADB link itself may still be healthy. */
+  static final class LinkLost extends IOException{LinkLost(String message){super(message);}}
   private static final int MAX_RECONNECTS=5;
   private static int reconnectAttempts;
   private static long reconnectAt;
   private static boolean isLinkFailure(Exception error){
+    // Anything raised by our own stream/watchdog paths is a lost projection by construction, so
+    // it is classified by type; library errors are only recognised by their message.
+    if(error instanceof LinkLost)return true;
     String message=error.getMessage();if(message==null)return false;
     return message.contains("Stream closed")||message.contains("Connection reset")||message.contains("Broken pipe")
       ||message.contains("Socket closed")||message.contains("timed out");
@@ -171,13 +183,17 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private void fail(Exception error,boolean checkAdb){runOnUiThread(()->{
     if(closed.get())return;
     foreground.demo.failed();
-    if(resumed&&checkAdb&&isLinkFailure(error)&&com.example.carmirror.adb.ConnectionOwner.catalog().selected()!=null&&com.example.carmirror.adb.ConnectionOwner.catalog().selected().tcp!=null&&reserveReconnect()){
+    com.example.carmirror.adb.DeviceEntry selected=ConnectionOwner.catalog().selected();
+    // Recovery is automatic for both transports: USB has no endpoint to redial, so the
+    // selection itself is handed back to the foreground owner, which re-requests access.
+    boolean recover=resumed&&checkAdb&&isLinkFailure(error)&&selected!=null&&reserveReconnect();
+    if(recover){
       final int attempt=reconnectAttempts;
-      android.util.Log.w("MirrorReconnect","link failure: "+error.getMessage()+" attempt="+attempt);
-      status.setText("ADB 连接已断开，正在重连（第 "+attempt+"/"+MAX_RECONNECTS+" 次）…");
+      android.util.Log.w("MirrorReconnect","link failure: "+error.getMessage()+" attempt="+attempt+" usb="+(selected.usb!=null));
+      status.setText("连接中断，正在自动恢复（第 "+attempt+"/"+MAX_RECONNECTS+" 次）…");
       status.setVisibility(View.VISIBLE);
       closeSession();
-      startReconnect(attempt);
+      startReconnect(attempt,selected);
       return;
     }
     String detail=isLinkFailure(error)?"ADB 连接已断开":error.getMessage();
@@ -188,33 +204,46 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     closeSession();
     if(checkAdb)ConnectionOwner.checkAfterStreamFailure(adb);
   });}
-  /** Reconnects and restarts this screen once the link is back; bounded to MAX_RECONNECTS. */
-  private void startReconnect(final int attempt){
+  /** True when a round trip still completes; a dead transport times this out. */
+  private boolean adbAlive(){
+    try{return !adb.shell("true",3000).timedOut();}catch(Exception error){return false;}
+  }
+  /**
+   * Restarts this screen once the link is usable again, bounded to MAX_RECONNECTS.
+   *
+   * <p>A projection stream can die while ADB is still fine; probing it first avoids tearing down
+   * a healthy connection, which is the difference between a sub-second restart and a full
+   * reconnect including the USB permission prompt.
+   */
+  private void startReconnect(final int attempt,final com.example.carmirror.adb.DeviceEntry entry){
     new Thread(()->{
-      if(ConnectionOwner.reconnect()){
-        long deadline=android.os.SystemClock.uptimeMillis()+12000;
+      if(!adbAlive()){
+        android.util.Log.w("MirrorReconnect","ADB is gone, reconnecting");
+        if(entry.usb!=null)foreground.connect(entry);
+        else ConnectionOwner.reconnect();
+        long deadline=android.os.SystemClock.uptimeMillis()+15000;
         while(android.os.SystemClock.uptimeMillis()<deadline&&!ConnectionOwner.isConnected()){
           if(!resumed||isFinishing()||isDestroyed())return;
           try{Thread.sleep(200);}catch(InterruptedException e){return;}
         }
       }
       if(ConnectionOwner.isConnected()){
-        android.util.Log.w("MirrorReconnect","reconnected, restarting mirror");
+        android.util.Log.w("MirrorReconnect","link usable, restarting mirror");
         runOnUiThread(()->{if(resumed&&!isFinishing()&&!isDestroyed())recreate();});
         return;
       }
       if(reserveReconnect()){
         final int next=reconnectAttempts;
         android.util.Log.w("MirrorReconnect","retry attempt="+next);
-        runOnUiThread(()->{if(!resumed||isFinishing()||isDestroyed())return;status.setText("ADB 连接已断开，正在重连（第 "+next+"/"+MAX_RECONNECTS+" 次）…");});
-        startReconnect(next);
+        runOnUiThread(()->{if(!resumed||isFinishing()||isDestroyed())return;status.setText("连接中断，正在自动恢复（第 "+next+"/"+MAX_RECONNECTS+" 次）…");});
+        startReconnect(next,entry);
         return;
       }
       runOnUiThread(()->{if(!resumed||isFinishing()||isDestroyed())return;status.setText("投屏失败：ADB 连接已断开\n请按住 × 3 秒退出后重新连接");status.setVisibility(View.VISIBLE);});
     },"mirror-reconnect").start();
   }
   /** All shutdown paths converge here. Closing scrcpy channels releases reads while ADB stays connected. */
-  private void closeSession(){if(!closed.compareAndSet(false,true))return;handler.removeCallbacks(health);geometry=null;controls.shutdownNow();video.shutdownNow();validation.shutdownNow();
+  private void closeSession(){if(!closed.compareAndSet(false,true))return;handler.removeCallbacks(health);geometry=null;controls.stop();video.shutdownNow();validation.shutdownNow();
     final ScrcpySession current; synchronized(this){current=session;}
     new Thread(()->{if(current!=null)current.stop();if(decoder!=null)decoder.close();},"mirror-close").start();
   }
