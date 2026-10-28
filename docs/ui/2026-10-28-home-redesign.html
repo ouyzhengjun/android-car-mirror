@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<title>车机投屏 · 界面改版设计稿 v1</title>
+<title>车机投屏 · 界面改版设计稿 v2（全横屏）</title>
 <style>
   :root{
     --surface:#1C1B1F; --surface-low:#1D1B20; --surface-c:#211F26; --surface-ch:#2B2930; --surface-chh:#36343B;
@@ -11,7 +11,8 @@
     --secondary-c:#4A4458; --on-secondary-c:#E8DEF8;
     --ok:#9BE8A6; --warn:#FFD27D; --error:#FFB4AB; --error-c:#8C1D18;
     --doc-bg:#0B0A0E;
-    --dp:1024px; --dph:1536px; --scale-device:2.5; --preview:.28;
+    /* 目标设备：横屏 3840 x 2560 px = 1536 x 1024 dp @2.5 */
+    --dp:1536px; --dph:1024px; --scale-device:2.5; --preview:.28;
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--doc-bg);color:#EFEDF1;
@@ -22,7 +23,7 @@
 
   .eyebrow{color:var(--primary);font-size:13px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 12px}
   h1{font-size:38px;line-height:1.25;margin:0 0 16px;font-weight:700;letter-spacing:-.01em}
-  .lede{color:var(--on-surface-var);font-size:17px;margin:0;max-width:74ch}
+  .lede{color:var(--on-surface-var);font-size:17px;margin:0;max-width:76ch}
   .meta{display:flex;flex-wrap:wrap;gap:10px;margin-top:26px}
   .chip{border:1px solid var(--outline-v);border-radius:999px;padding:7px 14px;font-size:13px;color:var(--on-surface-var)}
   .chip b{color:var(--on-surface);font-weight:600}
@@ -49,191 +50,170 @@
   .sw{display:inline-block;width:16px;height:16px;border-radius:4px;vertical-align:-3px;margin-right:8px;
     border:1px solid rgba(255,255,255,.14)}
 
-  .screens{display:flex;flex-wrap:wrap;gap:44px;margin-top:28px}
-  .shot{width:calc(2560px * var(--preview))}
+  .screens{display:flex;flex-wrap:wrap;gap:48px;margin-top:28px}
+  .shot{width:calc(3840px * var(--preview))}
   .shot-h{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
   .shot-h .idx{color:var(--primary);font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
   .shot-h .name{font-weight:600;font-size:15px}
   .shot-spec{font-size:12px;color:#8E8A99;margin:0 0 10px;font-variant-numeric:tabular-nums}
-  .shot-note{font-size:12.5px;color:#8E8A99;margin:10px 0 0;line-height:1.5}
-  .preview{width:calc(2560px * var(--preview));height:calc(3840px * var(--preview));overflow:hidden;
+  .shot-note{font-size:12.5px;color:#8E8A99;margin:10px 0 0;line-height:1.55}
+  .preview{width:calc(3840px * var(--preview));height:calc(2560px * var(--preview));overflow:hidden;
     border-radius:18px;box-shadow:0 18px 46px rgba(0,0,0,.55),0 0 0 1px #2A2831}
   .device{width:calc(var(--dp) * var(--scale-device));height:calc(var(--dph) * var(--scale-device));
     transform:scale(var(--preview));transform-origin:0 0}
-  /* 投屏页是横屏：1536 x 1024 dp = 3840 x 2560 px */
-  .shot.wide{width:calc(3840px * var(--preview))}
-  .preview.land{width:calc(3840px * var(--preview));height:calc(2560px * var(--preview))}
-  .device.land{width:calc(3840px);height:calc(2560px)}
-  .dp.land{width:1536px;height:1024px;transform:scale(var(--scale-device));transform-origin:0 0}
   .dp{position:relative;display:flex;flex-direction:column;width:var(--dp);height:var(--dph);overflow:hidden;
     background:var(--surface);transform:scale(var(--scale-device));transform-origin:0 0;color:var(--on-surface);
     font-size:17px;line-height:1.45}
   .dp *{box-sizing:border-box}
 
   .statusbar{flex:none;height:28px;display:flex;align-items:center;justify-content:space-between;
-    padding:0 28px;font-size:13px;color:var(--on-surface-var);letter-spacing:.02em}
-  .nav{flex:none;padding:12px 40px 4px;display:flex;align-items:center;gap:16px}
+    padding:0 40px;font-size:13px;color:var(--on-surface-var);letter-spacing:.02em}
+  .nav{flex:none;padding:8px 56px 4px;display:flex;align-items:center;gap:16px}
   .nav .back{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
     color:var(--on-surface-var);font-size:26px}
-  .nav .ttl{font-size:24px;font-weight:600;letter-spacing:.01em}
+  .nav .ttl{font-size:25px;font-weight:600;letter-spacing:.01em}
   .nav .spacer{flex:1}
   .iconbtn{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;
     color:var(--on-surface-var);font-size:23px}
+  .body{flex:1;display:flex;flex-direction:column;padding:4px 56px 40px;min-height:0}
 
-  .body{flex:1;display:flex;flex-direction:column;padding:6px 40px 40px;min-height:0}
-  .h1{font-size:46px;line-height:1.18;font-weight:700;letter-spacing:-.01em;margin:18px 0 8px}
-  .sub{font-size:20px;color:var(--on-surface-var);margin:0}
-
-  .chip-row{display:flex;gap:12px;align-items:center;margin:26px 0 0;flex-wrap:wrap}
-  .pill{display:inline-flex;align-items:center;gap:10px;height:46px;padding:0 18px;border-radius:999px;
+  .pill{display:inline-flex;align-items:center;gap:10px;height:44px;padding:0 18px;border-radius:999px;
     background:var(--surface-ch);font-size:16px;color:var(--on-surface-var)}
-  .pill.sm{height:40px;padding:0 14px;font-size:14px}
+  .pill.sm{height:38px;padding:0 14px;font-size:14px}
   .dot{width:10px;height:10px;border-radius:50%;background:var(--outline)}
   .dot.ok{background:var(--ok);box-shadow:0 0 0 5px rgba(155,232,166,.16)}
   .dot.warn{background:var(--warn);box-shadow:0 0 0 5px rgba(255,210,125,.16)}
-  .dot.err{background:var(--error);box-shadow:0 0 0 5px rgba(255,180,171,.16)}
 
-  /* 首页：整屏只有两个入口，纵向两张大卡 */
-  .launch{flex:1;display:flex;flex-direction:column;justify-content:center;gap:40px;padding:48px 40px 56px}
-  .lcard{flex:none;height:560px;border-radius:34px;padding:52px 56px;display:flex;align-items:center;
-    gap:44px;position:relative;overflow:hidden}
+  /* ---------- 首页：两个入口并排 ---------- */
+  .launch{flex:1;display:flex;align-items:center;justify-content:center;gap:48px;padding:0 40px 40px}
+  .lcard{width:690px;height:790px;border-radius:36px;padding:56px 44px;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;text-align:center;position:relative;overflow:hidden}
   .lcard.primary{background:linear-gradient(150deg,#60489F 0%,#4F378B 54%,#3B2870 100%);color:#E6DFFF}
   .lcard.plain{background:var(--surface-c);border:1px solid var(--outline-v)}
-  .lcard .lico{width:136px;height:136px;border-radius:36px;display:grid;place-items:center;
-    font-size:62px;line-height:1;flex:none}
+  .lcard .lico{width:196px;height:196px;border-radius:50px;display:grid;place-items:center;
+    font-size:88px;line-height:1;flex:none}
   .lcard.primary .lico{background:rgba(255,255,255,.16)}
   .lcard.plain .lico{background:var(--surface-chh);color:var(--on-surface)}
-  .lcard .ltxt{min-width:0}
-  .lcard .ltxt h3{font-size:46px;margin:0 0 12px;font-weight:700;letter-spacing:-.01em;color:inherit}
-  .lcard .ltxt p{font-size:21px;margin:0;line-height:1.5;color:inherit;opacity:.82;max-width:560px}
-  .lcard .lgo{margin-left:auto;font-size:44px;opacity:.72;flex:none}
+  .lcard h3{font-size:60px;margin:48px 0 16px;font-weight:700;letter-spacing:-.01em;color:inherit}
+  .lcard p{font-size:23px;margin:0;line-height:1.5;color:inherit;opacity:.82;max-width:500px}
+  .lcard .lgo{position:absolute;right:40px;bottom:34px;font-size:40px;opacity:.7}
 
-  .cards{display:flex;gap:26px;margin-top:34px;flex:none;height:800px}
-  .card{flex:1;border-radius:30px;padding:38px;display:flex;flex-direction:column;position:relative;overflow:hidden}
-  .card.primary{background:linear-gradient(155deg,#60489F 0%,#4F378B 52%,#3B2870 100%);color:#E6DFFF}
-  .card.plain{background:var(--surface-c);border:1px solid var(--outline-v)}
-  .card .ico{width:104px;height:104px;border-radius:30px;display:grid;place-items:center;font-size:48px;line-height:1}
-  .card.primary .ico{background:rgba(255,255,255,.15)}
-  .card.plain .ico{background:var(--surface-chh);color:var(--on-surface)}
-  .card h3{font-size:34px;margin:36px 0 12px;color:inherit;font-weight:650;line-height:1.25}
-  .card p{font-size:18px;margin:0;color:inherit;opacity:.84}
-  .card .tags{margin-top:22px;display:flex;flex-wrap:wrap;gap:8px}
-  .card .tag{font-size:13px;padding:6px 12px;border-radius:999px;background:rgba(255,255,255,.13)}
-  .card.plain .tag{background:var(--surface-chh);color:var(--on-surface-var)}
-  .card .foot{margin-top:auto;font-size:15px;opacity:.78;display:flex;align-items:center;gap:10px}
-  .card .illus{flex:1;display:flex;align-items:center;justify-content:center;margin:24px 0}
-  .card .screen{width:330px;height:200px;border-radius:16px;background:rgba(0,0,0,.24);
-    border:1px solid rgba(255,255,255,.24);display:flex;overflow:hidden}
-  .card .screen i{flex:1;background:linear-gradient(180deg,rgba(255,255,255,.15),rgba(255,255,255,.04))}
-  .card .screen i+i{border-left:1px solid rgba(255,255,255,.22);background:rgba(0,0,0,.28)}
-  .card .minilist{flex:1;display:flex;flex-direction:column;justify-content:center;gap:14px;margin:24px 0}
-  .card .minilist b{display:block;height:54px;border-radius:13px;background:var(--surface-chh)}
-  .card .minilist b:first-child{background:#2B2637;border:1px solid rgba(208,188,255,.38)}
-  .card .go{position:absolute;right:34px;bottom:32px;font-size:26px;opacity:.8}
-
-  .recent{display:flex;align-items:center;gap:22px;padding:26px 30px;border-radius:24px;
-    background:var(--surface-c);border:1px solid var(--outline-v);margin-top:34px}
-  .recent .rtext{flex:1;min-width:0}
-  .recent .rtitle{font-size:19px;font-weight:600}
-  .recent .rsub{font-size:15px;color:var(--on-surface-var);margin-top:4px}
-  .stats{display:flex;gap:18px;margin-top:auto}
-  .stats .st{flex:1;background:var(--surface-c);border-radius:20px;padding:24px 26px}
-  .stats .st .n{font-size:34px;font-weight:700;font-variant-numeric:tabular-nums}
-  .stats .st .k{font-size:14px;color:var(--on-surface-var);margin-top:2px}
-  .pagefoot{flex:none;padding:22px 40px 34px;display:flex;align-items:center;gap:14px;
-    font-size:14px;color:#8E8A99;border-top:1px solid #26242C;margin-top:auto}
-
-  .vt{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 80px}
-  .ring{width:280px;height:280px;border-radius:50%;display:grid;place-items:center;
-    background:var(--surface-c);border:1px solid var(--outline-v);font-size:104px;color:var(--primary);position:relative}
+  /* ---------- 通用两栏（演示模式各状态） ---------- */
+  .two{flex:1;display:flex;align-items:center;gap:96px;padding:0 96px}
+  .two .visual{width:380px;flex:none;display:flex;align-items:center;justify-content:center}
+  .two .copy{flex:1;min-width:0;text-align:left}
+  .two .copy h2{font-size:46px;margin:0 0 16px;font-weight:700;letter-spacing:-.01em}
+  .two .copy .hint{font-size:21px;color:var(--on-surface-var);margin:0;max-width:640px}
+  .ring{width:300px;height:300px;border-radius:50%;display:grid;place-items:center;
+    background:var(--surface-c);border:1px solid var(--outline-v);font-size:118px;color:var(--primary);position:relative}
   .ring::after{content:"";position:absolute;inset:-30px;border-radius:50%;border:2px solid rgba(208,188,255,.22)}
-  .spinner{width:132px;height:132px;border-radius:50%;
+  .spinner{width:150px;height:150px;border-radius:50%;
     background:conic-gradient(from 0deg,rgba(255,210,125,0) 0deg,var(--warn) 300deg,rgba(255,210,125,0) 360deg);
-    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 14px),#000 0);
-    mask:radial-gradient(farthest-side,transparent calc(100% - 14px),#000 0)}
-  .vt h2{font-size:38px;margin:48px 0 14px;font-weight:650;letter-spacing:-.01em}
-  .vt .hint{font-size:19px;color:var(--on-surface-var);margin:0;max-width:680px}
+    -webkit-mask:radial-gradient(farthest-side,transparent calc(100% - 15px),#000 0);
+    mask:radial-gradient(farthest-side,transparent calc(100% - 15px),#000 0)}
+  .err{width:250px;height:250px;border-radius:50%;background:var(--error-c);display:grid;
+    place-items:center;font-size:104px;color:var(--error)}
 
-  .btn{height:70px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:10px;
-    padding:0 38px;font-size:19px;font-weight:600}
+  .btn{height:68px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:10px;
+    padding:0 40px;font-size:19px;font-weight:600}
   .btn.filled{background:var(--primary);color:var(--on-primary)}
   .btn.tonal{background:var(--secondary-c);color:var(--on-secondary-c)}
   .btn.text{color:var(--primary);padding:0 20px}
   .btn.block{width:100%}
-  .btn.sm{height:56px;font-size:16px;padding:0 26px}
-  .btn-row{display:flex;gap:18px;margin-top:40px}
+  .btn.sm{height:54px;font-size:16px;padding:0 26px}
+  .btn-row{display:flex;gap:18px;margin-top:38px}
 
+  .steps{margin-top:34px;display:flex;flex-direction:column;gap:16px;text-align:left;max-width:640px}
+  .step{display:flex;align-items:center;gap:18px;font-size:19px;color:var(--on-surface-var)}
+  .step .n{width:40px;height:40px;border-radius:50%;background:var(--surface-ch);display:grid;
+    place-items:center;font-size:15px;flex:none}
+  .step.on{color:var(--on-surface)}
+  .step.on .n{background:var(--primary);color:var(--on-primary);font-weight:700}
+  .step.done .n{background:#1E4B2A;color:var(--ok)}
+  .fixes{margin:24px 0 0;padding-left:24px;font-size:18px;color:var(--on-surface-var);max-width:700px}
+  .fixes li{margin:11px 0}
+
+  .note-strip{flex:none;margin:0 56px 34px;display:flex;gap:14px;align-items:flex-start;font-size:15px;
+    color:var(--on-surface-var);background:#1A1820;border-radius:16px;padding:18px 22px}
+  .pagefoot{flex:none;padding:20px 56px 30px;display:flex;align-items:center;gap:14px;
+    font-size:14px;color:#8E8A99;border-top:1px solid #26242C}
+
+  /* ---------- 列表 ---------- */
   .list{margin-top:8px;border-radius:24px;overflow:hidden;background:var(--surface-c)}
-  .row{display:flex;align-items:center;gap:22px;padding:26px 30px;border-bottom:1px solid #322F39}
+  .row{display:flex;align-items:center;gap:22px;padding:24px 30px;border-bottom:1px solid #322F39}
   .row:last-child{border-bottom:0}
-  .row .rico{width:58px;height:58px;border-radius:18px;background:var(--surface-chh);
-    display:grid;place-items:center;font-size:26px;color:var(--on-surface-var);flex:none}
+  .row .rico{width:56px;height:56px;border-radius:18px;background:var(--surface-chh);
+    display:grid;place-items:center;font-size:25px;color:var(--on-surface-var);flex:none}
   .row .rtext{flex:1;min-width:0}
-  .row .rtitle{font-size:20px;font-weight:600}
-  .row .rsub{font-size:15px;color:var(--on-surface-var);margin-top:4px;
+  .row .rtitle{font-size:19px;font-weight:600}
+  .row .rsub{font-size:15px;color:var(--on-surface-var);margin-top:3px;
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .row .rgo{color:var(--outline);font-size:24px}
-  .sec-label{font-size:14px;color:var(--on-surface-var);letter-spacing:.06em;margin:26px 0 10px;padding-left:8px}
+  .sec-label{font-size:14px;color:var(--on-surface-var);letter-spacing:.06em;margin:24px 0 10px;padding-left:8px}
 
-  .pane{display:flex;flex:1;min-height:0;margin-top:14px;border-radius:24px;overflow:hidden;border:1px solid var(--outline-v)}
-  .pane .left{width:400px;background:var(--surface-low);border-right:1px solid var(--outline-v);
+  .cols{flex:1;display:flex;gap:36px;min-height:0}
+  .cols .col{flex:1;min-width:0;display:flex;flex-direction:column;min-height:0}
+
+  .pane{display:flex;flex:1;min-height:0;margin-top:12px;border-radius:24px;overflow:hidden;border:1px solid var(--outline-v)}
+  .pane .left{width:480px;background:var(--surface-low);border-right:1px solid var(--outline-v);
     padding:10px 0;display:flex;flex-direction:column;min-height:0}
-  .pane .right{flex:1;background:var(--surface-c);padding:38px;display:flex;flex-direction:column;min-height:0}
-  .pane .ph{font-size:13px;color:var(--on-surface-var);letter-spacing:.06em;padding:16px 24px 8px}
-  .pane .drow{padding:20px 24px;border-left:3px solid transparent}
+  .pane .right{flex:1;background:var(--surface-c);padding:34px 38px;display:flex;flex-direction:column;min-height:0}
+  .pane .ph{font-size:13px;color:var(--on-surface-var);letter-spacing:.06em;padding:14px 26px 8px}
+  .pane .drow{padding:19px 26px;border-left:3px solid transparent}
   .pane .drow.on{background:#2B2637;border-left-color:var(--primary)}
-  .pane .drow .l1{font-size:17px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pane .drow .l1{font-size:18px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .pane .drow .l2{font-size:14px;color:var(--on-surface-var);margin-top:3px}
   .pane .drow.on .l1{color:var(--primary)}
-  .pane .add{margin:auto 16px 18px;height:62px;border-radius:16px;border:1px dashed var(--outline-v);
+  .pane .add{margin:auto 18px 16px;height:60px;border-radius:16px;border:1px dashed var(--outline-v);
     display:grid;place-items:center;font-size:16px;color:var(--on-surface-var)}
-  .kv{display:flex;justify-content:space-between;gap:20px;padding:19px 0;border-bottom:1px solid #322F39;font-size:17px}
+  .kv{display:flex;justify-content:space-between;gap:20px;padding:17px 0;border-bottom:1px solid #322F39;font-size:17px}
   .kv .k{color:var(--on-surface-var)}
   .kv .v{font-weight:500;text-align:right}
-  .badge{font-size:13px;padding:4px 10px;border-radius:999px;background:var(--primary-c);color:#EADDFF;font-weight:600}
-  .note-strip{margin-top:auto;display:flex;gap:12px;align-items:flex-start;font-size:14px;
-    color:var(--on-surface-var);background:#1A1820;border-radius:14px;padding:16px 18px}
+  .note-inline{margin-top:auto;display:flex;gap:12px;align-items:flex-start;font-size:14px;
+    color:var(--on-surface-var);background:#1A1820;border-radius:14px;padding:15px 18px}
 
-  .seg{display:flex;gap:14px;margin-top:6px}
+  .seg{display:flex;gap:16px;margin-top:4px}
   .seg .opt{flex:1;border-radius:18px;border:1.5px solid var(--outline-v);background:var(--surface-c);
-    padding:16px 12px;display:flex;flex-direction:column;align-items:center;gap:12px}
+    padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:10px}
   .seg .opt.on{border-color:var(--primary);background:#2B2637}
-  .seg .opt .diagram{width:100%;height:76px;border-radius:8px;background:#0F0E13;
+  .seg .opt .diagram{width:100%;height:64px;border-radius:8px;background:#0F0E13;
     border:1px solid #322F39;display:flex;overflow:hidden}
   .seg .opt .diagram i{display:block;background:linear-gradient(180deg,#3A3546,#26232E)}
-  .seg .opt .lbl{font-size:16px;color:var(--on-surface-var)}
+  .seg .opt .lbl{font-size:15px;color:var(--on-surface-var)}
   .seg .opt.on .lbl{color:var(--primary);font-weight:600}
 
-  .previewbox{margin-top:10px;border-radius:18px;background:#0F0E13;border:1px solid #322F39;
-    height:420px;display:flex;align-items:center;justify-content:center;position:relative}
-  .canvas{width:960px;height:420px;position:relative;border-radius:10px;overflow:hidden;
+  .previewbox{margin-top:6px;border-radius:18px;background:#0F0E13;border:1px solid #322F39;
+    height:400px;display:flex;align-items:center;justify-content:center}
+  .canvas{width:720px;height:400px;position:relative;border-radius:10px;overflow:hidden;
     background:linear-gradient(180deg,#8A6A7C 0%,#5C4452 58%,#372934 100%)}
-  .canvas .cbar{position:absolute;left:0;right:0;top:0;height:36px;background:rgba(0,0,0,.34);
-    display:flex;align-items:center;gap:12px;padding:0 16px;font-size:13px;color:#EFE7EC}
-  .canvas .cdock2{position:absolute;left:0;right:0;bottom:0;height:48px;background:rgba(0,0,0,.46);
-    display:flex;align-items:center;justify-content:center;gap:18px}
-  .canvas .cdock2 b{width:20px;height:20px;border-radius:6px;background:rgba(255,255,255,.82);display:block}
+  .canvas .cbar{position:absolute;left:0;right:0;top:0;height:30px;background:rgba(0,0,0,.34);
+    display:flex;align-items:center;gap:12px;padding:0 14px;font-size:12px;color:#EFE7EC}
+  .canvas .cdock2{position:absolute;left:0;right:0;bottom:0;height:40px;background:rgba(0,0,0,.46);
+    display:flex;align-items:center;justify-content:center;gap:16px}
+  .canvas .cdock2 b{width:18px;height:18px;border-radius:5px;background:rgba(255,255,255,.82);display:block}
   .canvas .half{position:absolute;top:0;bottom:0;width:50%}
   .canvas .l{border-right:1px solid rgba(255,255,255,.18)}
-  .canvas .cap{position:absolute;bottom:10px;font-size:13px;color:#8E8A99}
-  .sel-region{position:absolute;inset:0;border:3px solid var(--primary);border-radius:10px;
-    box-shadow:0 0 0 9999px rgba(0,0,0,.45)}
+  .sel-region{position:absolute;inset:0;border:3px solid var(--primary);border-radius:10px}
 
-  .field{background:var(--surface-c);border:1.5px solid var(--outline-v);border-radius:16px;padding:16px 20px}
-  .field .fl{font-size:14px;color:var(--on-surface-var)}
-  .field .fv{font-size:23px;margin-top:4px;font-variant-numeric:tabular-nums}
+  .field{background:var(--surface-c);border:1.5px solid var(--outline-v);border-radius:16px;padding:15px 20px}
+  .field .fv{font-size:23px;font-variant-numeric:tabular-nums}
   .field.focus{border-color:var(--primary)}
-  .grid2{display:flex;gap:20px}
+  .grid2{display:flex;gap:18px}
   .grid2>*{flex:1}
 
   .scrim{position:absolute;inset:0;background:rgba(0,0,0,.62);display:grid;place-items:center}
-  .dialog{width:680px;border-radius:30px;background:var(--surface-ch);padding:38px}
+  .dialog{width:800px;border-radius:30px;background:var(--surface-ch);padding:36px 40px}
   .dialog h3{margin:0 0 8px;font-size:27px;color:var(--on-surface)}
   .dialog p{margin:0;font-size:16px}
-  .dialog .actions{display:flex;justify-content:flex-end;gap:14px;margin-top:34px}
+  .dialog .actions{display:flex;justify-content:flex-end;gap:14px;margin-top:30px}
 
+  .stats{display:flex;gap:16px;margin-top:auto}
+  .stats .st{flex:1;background:var(--surface-c);border-radius:20px;padding:20px 24px}
+  .stats .st .n{font-size:32px;font-weight:700;font-variant-numeric:tabular-nums}
+  .stats .st .k{font-size:14px;color:var(--on-surface-var)}
+
+  /* ---------- 投屏页（横屏铺满，无 UI） ---------- */
   .mirror{position:absolute;inset:0;background:#000;overflow:hidden}
-  /* 铺满：视频按 cover 缩放，超出部分裁掉，四边都不留白 */
   .bleed{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
     width:1638px;height:1024px;background:linear-gradient(180deg,#8A6A7C 0%,#5C4452 56%,#372934 100%)}
   .bleed .cnav{position:absolute;left:0;right:0;top:0;height:52px;background:rgba(0,0,0,.3);
@@ -252,32 +232,6 @@
   .hintbar{position:absolute;left:50%;transform:translateX(-50%);top:30px;
     background:rgba(10,8,12,.82);border:1px solid rgba(255,255,255,.24);border-radius:999px;
     padding:11px 22px;font-size:16px;color:#F5EFF5}
-  .car{width:1024px;height:320px;background:linear-gradient(180deg,#7E6070 0%,#5C4452 60%,#3A2C36 100%);
-    position:relative;overflow:hidden}
-  .car .cnum{position:absolute;left:0;right:0;top:0;height:42px;display:flex;align-items:center;
-    gap:26px;padding:0 26px;font-size:14px;color:#F1E8EC;background:rgba(0,0,0,.22)}
-  .car .cdock{position:absolute;left:0;right:0;bottom:0;height:56px;display:flex;align-items:center;
-    justify-content:center;gap:30px;background:rgba(0,0,0,.42)}
-  .car .cdock b{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.82);display:block}
-  .exit{position:absolute;right:36px;top:36px;width:68px;height:68px;border-radius:50%;
-    background:rgba(0,0,0,.52);border:1px solid rgba(255,255,255,.3);display:grid;place-items:center;
-    font-size:32px;color:#fff}
-  .bubble{position:absolute;right:120px;top:50px;background:rgba(20,18,24,.9);border:1px solid var(--outline-v);
-    border-radius:14px;padding:11px 16px;font-size:15px;color:var(--on-surface)}
-  .param-chip{position:absolute;left:36px;bottom:36px;background:rgba(20,18,24,.74);
-    border:1px solid var(--outline-v);border-radius:999px;padding:9px 18px;font-size:15px;color:var(--on-surface-var)}
-
-  .steps{margin-top:44px;display:flex;flex-direction:column;gap:18px;text-align:left;width:640px}
-  .step{display:flex;align-items:center;gap:18px;font-size:18px;color:var(--on-surface-var)}
-  .step .n{width:38px;height:38px;border-radius:50%;background:var(--surface-ch);display:grid;
-    place-items:center;font-size:15px;flex:none}
-  .step.on{color:var(--on-surface)}
-  .step.on .n{background:var(--primary);color:var(--on-primary);font-weight:700}
-  .step.done .n{background:#1E4B2A;color:var(--ok)}
-  .err{width:220px;height:220px;border-radius:50%;background:var(--error-c);display:grid;
-    place-items:center;font-size:92px;color:var(--error);margin-bottom:38px}
-  .fixes{text-align:left;width:700px;margin-top:30px;font-size:17px;color:var(--on-surface-var)}
-  .fixes li{margin:12px 0}
 
   footer{margin-top:90px;padding-top:26px;border-top:1px solid #24222A;color:#8E8A99;font-size:13px}
 </style>
@@ -286,42 +240,42 @@
 <div class="wrap">
 
 <header class="cover">
-  <p class="eyebrow">UI Redesign · 待评审</p>
-  <h1>车机投屏 · 界面改版设计稿 v1</h1>
-  <p class="lede">把「一屏堆满所有控件」改成「先选模式，再进设置」：启动只给两个入口，演示模式负责无人值守自动投屏，设置负责设备和参数管理。</p>
+  <p class="eyebrow">UI Redesign v2 · 全横屏 · 待评审</p>
+  <h1>车机投屏 · 界面改版设计稿 v2</h1>
+  <p class="lede">启动只给两个入口，演示模式负责无人值守地自动投屏，设置负责设备和参数管理；<b>全部页面按横屏排版</b>，投屏页铺满且不叠加任何控件。</p>
   <div class="meta">
     <span class="chip">目标设备 <b>TB522FU</b></span>
-    <span class="chip">物理分辨率 <b>2560 × 3840 px</b></span>
-    <span class="chip">逻辑尺寸 <b>1024 × 1536 dp</b></span>
+    <span class="chip">物理尺寸 <b>3840 × 2560 px</b></span>
+    <span class="chip">逻辑尺寸 <b>1536 × 1024 dp</b></span>
     <span class="chip">密度 <b>400 dpi @2.5×</b></span>
+    <span class="chip">方向 <b>全横屏锁定</b></span>
     <span class="chip">主题 <b>Material 3 深色</b></span>
-    <span class="chip">投屏页 <b>3840 × 2560 px 横屏</b></span>
   </div>
   <div class="gate">
-    <p><b>开发门禁：</b>本文件只到设计稿。下面每块画板都是 2560 × 3840 px 的等比稿（内容按 dp 编排后整体 ×2.5），你确认版式、文案和交互规则之后我再动代码。</p>
+    <p><b>开发门禁：</b>本文件只到设计稿。下面每块画板都是 3840 × 2560 px 的等比稿（内容按 dp 编排后整体 ×2.5），你确认版式、文案和交互规则之后我再动代码。</p>
   </div>
 </header>
 
 <h2><span class="num">01</span>设计依据</h2>
-<p>版式取自 Google 官方的大屏规范，交互模型取自几个成熟 scrcpy 图形客户端，再按这台平板的实际用法收敛成两层结构。</p>
+<p>版式取自 Google 官方的大屏规范，交互模型取自几个成熟 scrcpy 图形客户端，再按这台平板「横屏手持、站在车边操作」的实际用法收敛成两层结构。</p>
 
 <h3>从大屏规范里取的</h3>
 <ul>
-  <li><b>Window size class = expanded</b>：1024 dp 宽属于 expanded，用「单栏 + 分区卡片」推进，不做手机式的层层套娃。</li>
-  <li><b>List-Detail 规范布局</b>：设备管理用左列表 400 dp + 右详情双栏，避免「点进去、返回、再点进去」。</li>
-  <li><b>可点区域 ≥ 48 dp</b>：本稿按钮 70 dp、列表行 100 dp 以上，站在车边单手点得中。</li>
-  <li><b>正文行宽 ≤ 60 字符</b>：说明文字全部限制在这个范围内。</li>
+  <li><b>Window size class = expanded</b>：1536 × 1024 dp 属于 expanded，横向空间充足，用「并排卡片 + 双栏」而不是单列长页。</li>
+  <li><b>List-Detail 规范布局</b>：设备管理、设置概览都用左右分栏，避免「点进去、返回、再点进去」。</li>
+  <li><b>可点区域 ≥ 48 dp</b>：本稿主按钮 68 dp、列表行 100 dp 以上，单手拿着平板也点得中。</li>
+  <li><b>正文行宽 ≤ 60 字符</b>：说明文字限制在 640–700 dp，避免横屏一行太长。</li>
 </ul>
 
 <h3>从 scrcpy 客户端里取的</h3>
 <ul>
   <li><b>设备列表常驻 + 状态内联</b>（Escrcpy、go-scrcpy-client）：设备行直接显示「USB / 无线 · 已连接 / 待授权」，不需要额外状态页。</li>
-  <li><b>参数按组折叠</b>（Scrcpy GUI Flutter 版的分组面板）：本稿收敛成「区域 / 画质 / 高级」三段，并加实时裁切预览。</li>
-  <li><b>一键无线连接</b>（多款客户端的 USB→TCP/IP 流程）：保留「地址 + 端口 + 记住此设备」，连上后自动成为演示模式首选。</li>
-  <li><b>刻意不做</b>：多设备并行投屏、命令预览、键盘映射——这台平板只服务一台车机，复杂度只会变成误操作。</li>
+  <li><b>参数按组折叠</b>（Scrcpy GUI Flutter 版的分组面板）：本稿收敛成「区域 / 画质 / 高级」，并加实时裁切预览。</li>
+  <li><b>一键无线连接</b>：保留「地址 + 端口 + 记住此设备」，连上后自动成为演示模式首选。</li>
+  <li><b>刻意不做</b>：多设备并行投屏、命令预览、键盘映射——这台平板只服务一台车机。</li>
 </ul>
 
-<div class="note"><p><b>与现状的差别：</b>现在是一个可滚动长页面（设备、模式开关、投屏参数全挤在一屏，底部按钮要滚很久才出现）。改版后主页只有两个入口；演示模式独占一页且只有「等待 / 连接中 / 投屏中 / 失败」四态；设置拆成设备管理、无线连接、投屏设置三个页面。</p></div>
+<div class="note"><p><b>这一版的最大变化：</b>v1 是竖屏稿（1024 × 1536 dp）。你现在用横屏平板，投屏页本来就锁横屏，所以 v2 把所有页面统一到 <b>1536 × 1024 dp 横屏</b>。版式随之重排：首页两张卡并排、演示模式改成「左图右文」、设置与投屏设置改成双栏、设备管理加宽列表。</p></div>
 
 <h3>参考来源</h3>
 <ul>
@@ -349,38 +303,38 @@
   </tbody>
 </table>
 
-<h3>字号与间距</h3>
+<h3>字号与间距（横屏）</h3>
 <table>
   <thead><tr><th>层级</th><th>dp</th><th>实机 px</th><th>用在哪</th></tr></thead>
   <tbody>
-    <tr><td>Display</td><td>46 / 54</td><td>115 / 135</td><td>首页标题</td></tr>
-    <tr><td>Headline</td><td>34–38 / 46</td><td>85–95 / 115</td><td>卡片标题、演示模式状态字</td></tr>
-    <tr><td>Title</td><td>24 / 32</td><td>60 / 80</td><td>页面栏标题、列表主标题</td></tr>
-    <tr><td>Body</td><td>18–20 / 28</td><td>45–50 / 70</td><td>正文、按钮文字</td></tr>
-    <tr><td>Label</td><td>14–15 / 22</td><td>35–38 / 55</td><td>分组标签、状态、参数名</td></tr>
+    <tr><td>Display</td><td>50 / 58</td><td>125 / 145</td><td>首页两张卡的标题</td></tr>
+    <tr><td>Headline</td><td>46 / 54</td><td>115 / 135</td><td>演示模式状态字</td></tr>
+    <tr><td>Title</td><td>25 / 32</td><td>62 / 80</td><td>页面栏标题、列表主标题</td></tr>
+    <tr><td>Body</td><td>18–21 / 28</td><td>45–52 / 70</td><td>正文、按钮文字</td></tr>
+    <tr><td>Label</td><td>14 / 20</td><td>35 / 50</td><td>分组标签、状态、参数名</td></tr>
   </tbody>
 </table>
-<p>间距走 4 dp 栅格，常用 8 / 12 / 16 / 24 / 40 dp；页面左右边距 40 dp，卡片圆角 30 dp，列表行高 ≥ 100 dp。</p>
+<p>间距走 4 dp 栅格，常用 8 / 12 / 16 / 24 / 40 dp；页面左右边距 56 dp，卡片圆角 36 dp，列表行高 ≥ 100 dp。</p>
 
 <h3>关键触控尺寸</h3>
 <ul>
-  <li>主按钮 <b>70 dp</b>（实机 175 px），全宽；次要按钮 56 dp；圆角 999。</li>
-  <li>返回 / 图标按钮 <b>52 dp</b>；退出浮窗 <b>68 dp</b>（与现有实现一致，便于沿用）。</li>
-  <li>设备列表行 <b>≥ 100 dp</b>；设置分组行 <b>110 dp</b>。</li>
+  <li>主按钮 <b>68 dp</b>（实机 170 px），次要按钮 54 dp；圆角 999。</li>
+  <li>返回 / 图标按钮 <b>52 dp</b>；首页卡片 <b>690 × 790 dp</b>。</li>
+  <li>设备列表行 <b>≥ 100 dp</b>；设置分组行 <b>≈ 108 dp</b>。</li>
 </ul>
 
 <h2><span class="num">03</span>信息架构</h2>
-<p>只有两层，任何页面最多一次「返回」就回到首页。</p>
+<p>只有两层，任何页面最多一次「返回」就回到首页；全部页面横屏。</p>
 <table>
   <thead><tr><th>页面</th><th>职责</th><th>能去哪</th></tr></thead>
   <tbody>
     <tr><td>首页</td><td>整屏只有两个入口：演示模式 / 设置，不放任何状态或快捷操作</td><td>演示模式、设置</td></tr>
     <tr><td>演示模式</td><td>持续找目标：<b>设置中选中的设备优先</b>，其次等 USB 插入；一旦可用就直接按已保存参数投屏</td><td>投屏页、设置、返回</td></tr>
-    <tr><td>投屏页</td><td>只锁横屏、只放画面，铺满无留白、无任何悬浮 UI；从屏幕边缘内滑退出</td><td>退出回演示模式</td></tr>
-    <tr><td>设置</td><td>概览：当前设备、四个子页入口、诊断</td><td>设备管理、无线连接、投屏设置</td></tr>
-    <tr><td>设备管理</td><td>左列表右详情：USB 候选与已存无线设备，连接 / 断开 / 设为首选 / 删除</td><td>无线连接、投屏设置</td></tr>
+    <tr><td>投屏页</td><td>只放画面，铺满无留白、无任何悬浮 UI；从屏幕边缘内滑退出</td><td>退出回演示模式</td></tr>
+    <tr><td>设置</td><td>双栏概览：左栏当前设备 + 管理入口 + 统计，右栏诊断 + 当前运行</td><td>设备管理、无线连接、投屏设置</td></tr>
+    <tr><td>设备管理</td><td>左列表（480 dp）右详情：USB 候选与已存无线设备，连接 / 断开 / 设为首选 / 删除</td><td>无线连接、投屏设置</td></tr>
     <tr><td>无线连接</td><td>输入 IP + 端口，记住此设备</td><td>设备管理（连接成功后）</td></tr>
-    <tr><td>投屏设置</td><td>区域（全屏/主屏/副屏/自定义）与画质，带裁切预览，按设备保存</td><td>设备管理</td></tr>
+    <tr><td>投屏设置</td><td>双栏：左区域与裁切预览，右画质与高级项，按设备保存</td><td>设备管理</td></tr>
   </tbody>
 </table>
 
@@ -390,81 +344,78 @@
 <!-- 01 首页 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">01</span><span class="name">首页（只有两个入口）</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="launch">
       <div class="lcard primary">
         <div class="lico">▶</div>
-        <div class="ltxt"><h3>演示模式</h3>
-          <p>插上 USB 自动投屏；设置里选中的设备优先。</p></div>
+        <h3>演示模式</h3>
+        <p>插上 USB 自动投屏；设置里选中的设备优先。</p>
         <div class="lgo">›</div>
       </div>
       <div class="lcard plain">
         <div class="lico">⚙</div>
-        <div class="ltxt"><h3>设置</h3>
-          <p>管理 ADB 设备、无线连接与投屏参数。</p></div>
+        <h3>设置</h3>
+        <p>管理 ADB 设备、无线连接与投屏参数。</p>
         <div class="lgo">›</div>
       </div>
     </div>
   </div></div></div>
-  <p class="shot-note">整屏只有这两个入口：没有标题、没有状态胶囊、没有最近使用、没有版本号；链路状态只在设置里看。</p>
+  <p class="shot-note">横屏后两张大卡并排，各 690 × 790 dp；没有标题、状态胶囊、最近使用和版本号。</p>
 </div>
 
 <!-- 02 演示模式 等待 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">02</span><span class="name">演示模式 · 等待设备</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">演示模式</span><span class="spacer"></span><span class="iconbtn">⚙</span></div>
-    <div class="vt">
-      <div class="ring">⤓</div>
-      <h2>等待 USB 设备接入</h2>
-      <p class="hint">插上 OTG 线就会自动开始投屏，不需要再点任何按钮。</p>
-      <div class="pill" style="margin-top:38px;height:54px">
-        <span class="dot warn"></span>首选：无线 192.168.43.160:5555 · 暂不可达
+    <div class="two">
+      <div class="visual"><div class="ring">⤓</div></div>
+      <div class="copy">
+        <h2>等待 USB 设备接入</h2>
+        <p class="hint">插上 OTG 线就会自动开始投屏，不需要再点任何按钮。</p>
+        <div style="margin-top:30px"><span class="pill"><span class="dot warn"></span>首选：无线 192.168.43.160:5555 · 暂不可达</span></div>
+        <div class="btn-row"><span class="btn tonal">更换首选设备</span><span class="btn text">打开设置</span></div>
       </div>
-      <div class="btn-row"><span class="btn tonal">更换首选设备</span><span class="btn text">打开设置</span></div>
     </div>
-    <div class="note-strip" style="margin:0 40px 34px">
-      <span>ⓘ</span><span>首次插入会在平板上弹系统授权框，在车机上可能还要确认一次 ADB 授权；之后不再询问。</span>
-    </div>
+    <div class="note-strip"><span>ⓘ</span><span>首次插入会在平板上弹系统授权框，在车机上可能还要确认一次 ADB 授权；之后不再询问。</span></div>
   </div></div></div>
-  <p class="shot-note">底部常驻一条授权说明，避免现场演示时「插上没反应」被误判为故障。</p>
+  <p class="shot-note">横屏改成「左图形 / 右说明」，一屏内完成；底部常驻授权说明，避免现场把「插上没反应」当故障。</p>
 </div>
 
 <!-- 03 演示模式 连接中 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">03</span><span class="name">演示模式 · 连接中</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">演示模式</span><span class="spacer"></span><span class="iconbtn">⚙</span></div>
-    <div class="vt">
-      <div class="ring"><div class="spinner"></div></div>
-      <h2>正在连接</h2>
-      <p class="hint">无线 192.168.43.160:5555</p>
-      <div class="steps">
-        <div class="step done"><span class="n">✓</span>已找到设备</div>
-        <div class="step on"><span class="n">2</span>建立 ADB 连接</div>
-        <div class="step"><span class="n">3</span>读取显示尺寸</div>
-        <div class="step"><span class="n">4</span>启动投屏服务</div>
+    <div class="two">
+      <div class="visual"><div class="ring"><div class="spinner"></div></div></div>
+      <div class="copy">
+        <h2>正在连接</h2>
+        <p class="hint">无线 192.168.43.160:5555</p>
+        <div class="steps">
+          <div class="step done"><span class="n">✓</span>已找到设备</div>
+          <div class="step on"><span class="n">2</span>建立 ADB 连接</div>
+          <div class="step"><span class="n">3</span>读取显示尺寸</div>
+          <div class="step"><span class="n">4</span>启动投屏服务</div>
+        </div>
+        <div class="btn-row" style="margin-top:30px"><span class="btn tonal">取消</span></div>
       </div>
-      <div class="btn-row"><span class="btn tonal">取消</span></div>
-    </div>
-    <div class="note-strip" style="margin:0 40px 34px">
-      <span>ⓘ</span><span>四步里只有第 4 步会启动车机上的服务（上传约 732 KB），通常 1–2 秒完成。</span>
     </div>
   </div></div></div>
-  <p class="shot-note">分步进度而不是转圈，现场出问题能立刻看出停在哪一步。</p>
+  <p class="shot-note">四步进度而不是转圈，现场出问题能立刻看出停在哪一步。</p>
 </div>
 
-<!-- 04 投屏页（横屏铺满，无 UI） -->
-<div class="shot wide">
+<!-- 04 投屏页 -->
+<div class="shot">
   <div class="shot-h"><span class="idx">04</span><span class="name">投屏页 · 实机效果</span></div>
   <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏，锁定）</p>
-  <div class="preview land"><div class="device land"><div class="dp land">
+  <div class="preview"><div class="device"><div class="dp">
     <div class="mirror">
       <div class="bleed">
         <div class="cnav"><span>◉</span><span>◍</span><span>▤</span><span>ϟ</span><span style="flex:1"></span><span>20:31</span></div>
@@ -472,14 +423,14 @@
       </div>
     </div>
   </div></div></div>
-  <p class="shot-note">画面按 <b>cover</b> 铺满整个横屏，四边零留白：没有退出按钮、没有参数条、没有提示气泡，屏幕上只有车机画面本身。</p>
+  <p class="shot-note">画面按 <b>cover</b> 铺满整个横屏，四边零留白：没有退出按钮、没有参数条、没有提示气泡。</p>
 </div>
 
-<!-- 05 投屏页（交互标注） -->
-<div class="shot wide">
+<!-- 05 投屏页 标注 -->
+<div class="shot">
   <div class="shot-h"><span class="idx">05</span><span class="name">投屏页 · 交互标注</span></div>
   <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏，锁定）</p>
-  <div class="preview land"><div class="device land"><div class="dp land">
+  <div class="preview"><div class="device"><div class="dp">
     <div class="mirror">
       <div class="bleed">
         <div class="cnav"><span>◉</span><span>◍</span><span>▤</span><span>ϟ</span><span style="flex:1"></span><span>20:31</span></div>
@@ -490,100 +441,114 @@
       <div class="edge" style="left:44px"></div>
       <div class="edge" style="right:44px"></div>
       <div class="hintbar">从屏幕边缘内滑可退出投屏</div>
-      <div class="anno" style="left:70px;bottom:96px">① <b>铺满无留白</b><br>按 cover 缩放，四边贴边</div>
-      <div class="anno" style="right:70px;bottom:96px">② <b>两侧裁切区</b><br>区域比例与屏幕不一致时，只裁不缩</div>
+      <div class="anno" style="left:90px;bottom:96px">① <b>铺满无留白</b><br>按 cover 缩放，四边贴边</div>
+      <div class="anno" style="right:90px;bottom:96px">② <b>两侧裁切区</b><br>区域比例与屏幕不一致时，只裁不缩</div>
       <div class="anno" style="left:120px;top:96px">③ <b>边缘内滑 = 退出</b><br>左右各 40 dp 系统手势区</div>
       <div class="anno" style="right:120px;top:96px">④ <b>首次进入提示</b><br>显示 3 秒后自动消失，之后不再出现</div>
     </div>
   </div></div></div>
-  <p class="shot-note">四类标注只用于评审说明，实机不显示任何其中元素；④ 只在新装或改过区域后的第一次进入出现。</p>
+  <p class="shot-note">四类标注只用于评审说明，实机不显示其中任何元素；④ 只在新装或改过区域后的第一次进入出现。</p>
 </div>
 
-<!-- 05 演示模式 失败 -->
+<!-- 06 演示模式 失败 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">06</span><span class="name">演示模式 · 失败</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">演示模式</span><span class="spacer"></span><span class="iconbtn">⚙</span></div>
-    <div class="vt">
-      <div class="err">!</div>
-      <h2 style="margin-top:0">连接失败</h2>
-      <p class="hint">车机 192.168.43.160:5555 拒绝连接</p>
-      <ul class="fixes">
-        <li>确认车机已开启经典 TCP ADB（端口 5555）</li>
-        <li>确认平板与车机在同一网络</li>
-        <li>车机重启过的话，需要重新执行 <code>adb tcpip 5555</code></li>
-      </ul>
-      <div class="btn-row"><span class="btn filled">重试</span><span class="btn tonal">打开设置</span></div>
+    <div class="two">
+      <div class="visual"><div class="err">!</div></div>
+      <div class="copy">
+        <h2>连接失败</h2>
+        <p class="hint">车机 192.168.43.160:5555 拒绝连接</p>
+        <ul class="fixes">
+          <li>确认车机已开启经典 TCP ADB（端口 5555）</li>
+          <li>确认平板与车机在同一网络</li>
+          <li>车机重启过的话，需要重新执行 <code>adb tcpip 5555</code></li>
+        </ul>
+        <div class="btn-row" style="margin-top:26px"><span class="btn filled">重试</span><span class="btn tonal">打开设置</span></div>
+      </div>
     </div>
-    <div class="note-strip" style="margin:0 40px 34px">
-      <span>ⓘ</span><span>插上 USB 线会自动改用有线连接，无需手动切换。</span>
-    </div>
+    <div class="note-strip"><span>ⓘ</span><span>插上 USB 线会自动改用有线连接，无需手动切换。</span></div>
   </div></div></div>
   <p class="shot-note">失败页必须给出「下一步怎么做」，而不是只报错。</p>
 </div>
 
-<!-- 06 设置 概览 -->
+<!-- 07 设置 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">07</span><span class="name">设置 · 概览</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <div class="shot-h"><span class="idx">07</span><span class="name">设置 · 双栏概览</span></div>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">设置</span></div>
     <div class="body">
-      <div class="list" style="margin-top:16px">
-        <div class="row">
-          <div class="rico">⛓</div>
-          <div class="rtext"><div class="rtitle">无线 · 192.168.43.160:5555</div>
-            <div class="rsub"><span style="color:var(--ok)">● 已连接</span> · 5120 × 1600 · 全屏</div></div>
-          <span class="btn text sm">断开</span>
+      <div class="cols">
+        <div class="col">
+          <div class="list" style="margin-top:10px">
+            <div class="row">
+              <div class="rico">⛓</div>
+              <div class="rtext"><div class="rtitle">无线 · 192.168.43.160:5555</div>
+                <div class="rsub"><span style="color:var(--ok)">● 已连接</span> · 5120 × 1600 · 全屏</div></div>
+              <span class="btn text sm">断开</span>
+            </div>
+          </div>
+          <p class="sec-label">管理</p>
+          <div class="list" style="margin-top:0">
+            <div class="row"><div class="rico">▤</div><div class="rtext">
+              <div class="rtitle">设备管理</div><div class="rsub">USB 候选、已保存的无线设备、连接与断开</div></div><span class="rgo">›</span></div>
+            <div class="row"><div class="rico">⌁</div><div class="rtext">
+              <div class="rtitle">无线连接</div><div class="rsub">输入车机 IP 与端口，加入已保存列表</div></div><span class="rgo">›</span></div>
+            <div class="row"><div class="rico">◫</div><div class="rtext">
+              <div class="rtitle">投屏设置</div><div class="rsub">全屏 · 2560 边 · 8 Mbps · 30 fps</div></div><span class="rgo">›</span></div>
+            <div class="row"><div class="rico">▶</div><div class="rtext">
+              <div class="rtitle">进入演示模式</div><div class="rsub">插上 USB 或按首选设备自动投屏</div></div><span class="rgo">›</span></div>
+          </div>
+          <div class="stats">
+            <div class="st"><div class="n">2</div><div class="k">已保存无线设备</div></div>
+            <div class="st"><div class="n">1</div><div class="k">当前 USB 候选</div></div>
+            <div class="st"><div class="n">12<span style="font-size:19px"> 分钟</span></div><div class="k">最近一次投屏</div></div>
+          </div>
         </div>
-      </div>
-      <p class="sec-label">管理</p>
-      <div class="list" style="margin-top:0">
-        <div class="row"><div class="rico">▤</div><div class="rtext">
-          <div class="rtitle">设备管理</div><div class="rsub">USB 候选、已保存的无线设备、连接与断开</div></div><span class="rgo">›</span></div>
-        <div class="row"><div class="rico">⌁</div><div class="rtext">
-          <div class="rtitle">无线连接</div><div class="rsub">输入车机 IP 与端口，加入已保存列表</div></div><span class="rgo">›</span></div>
-        <div class="row"><div class="rico">◫</div><div class="rtext">
-          <div class="rtitle">投屏设置</div><div class="rsub">全屏 · 2560 边 · 8 Mbps · 30 fps</div></div><span class="rgo">›</span></div>
-        <div class="row"><div class="rico">▶</div><div class="rtext">
-          <div class="rtitle">进入演示模式</div><div class="rsub">插上 USB 或按首选设备自动投屏</div></div><span class="rgo">›</span></div>
-      </div>
-      <p class="sec-label">诊断</p>
-      <div class="list" style="margin-top:0">
-        <div class="row"><div class="rico">◱</div><div class="rtext">
-          <div class="rtitle">读取显示尺寸</div><div class="rsub">当前记录 5120 × 1600（双联屏）</div></div><span class="btn text sm">读取</span></div>
-        <div class="row"><div class="rico">≡</div><div class="rtext">
-          <div class="rtitle">投屏日志</div><div class="rsub">最近失败 20:41 · 控制通道无响应</div></div><span class="rgo">›</span></div>
-        <div class="row"><div class="rico">ⓘ</div><div class="rtext">
-          <div class="rtitle">关于</div><div class="rsub">版本 0.2.0 · scrcpy 4.0 · 仅前台运行</div></div><span class="rgo">›</span></div>
-      </div>
-      <div class="stats">
-        <div class="st"><div class="n">2</div><div class="k">已保存的无线设备</div></div>
-        <div class="st"><div class="n">1</div><div class="k">当前 USB 候选</div></div>
-        <div class="st"><div class="n">12<span style="font-size:20px"> 分钟</span></div><div class="k">最近一次投屏</div></div>
+        <div class="col">
+          <p class="sec-label" style="margin-top:10px">诊断</p>
+          <div class="list" style="margin-top:0">
+            <div class="row"><div class="rico">◱</div><div class="rtext">
+              <div class="rtitle">读取显示尺寸</div><div class="rsub">当前记录 5120 × 1600（双联屏）</div></div><span class="btn text sm">读取</span></div>
+            <div class="row"><div class="rico">≡</div><div class="rtext">
+              <div class="rtitle">投屏日志</div><div class="rsub">最近失败 20:41 · 控制通道无响应</div></div><span class="rgo">›</span></div>
+            <div class="row"><div class="rico">ⓘ</div><div class="rtext">
+              <div class="rtitle">关于</div><div class="rsub">版本 0.2.0 · scrcpy 4.0 · 仅前台运行</div></div><span class="rgo">›</span></div>
+          </div>
+          <p class="sec-label">当前运行</p>
+          <div class="list" style="margin-top:0">
+            <div class="row"><div class="rico">◐</div><div class="rtext">
+              <div class="rtitle">演示首选</div><div class="rsub">无线 192.168.43.160:5555</div></div>
+              <span class="pill sm" style="background:#2B2637;color:var(--primary)">使用中</span></div>
+            <div class="row"><div class="rico">⏱</div><div class="rtext">
+              <div class="rtitle">最近一次投屏</div><div class="rsub">今天 20:31 · 12 分钟 · 仅主屏</div></div><span class="rgo">›</span></div>
+          </div>
+        </div>
       </div>
     </div>
     <div class="pagefoot">投屏参数按设备单独保存，换设备不会互相覆盖</div>
   </div></div></div>
-  <p class="shot-note">概览页只放「一眼要看到的状态」和三个子页入口，具体参数都往里收。</p>
+  <p class="shot-note">横屏拆成左右两栏：左栏「当前设备 + 管理 + 统计」，右栏「诊断 + 当前运行」，一屏看全、不用滚动。</p>
 </div>
 
-<!-- 07 设备管理 -->
+<!-- 08 设备管理 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">08</span><span class="name">设备管理（左列表 / 右详情）</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">设备管理</span><span class="spacer"></span><span class="iconbtn">↻</span></div>
-    <div class="body" style="padding-left:26px;padding-right:26px">
+    <div class="body" style="padding-left:32px;padding-right:32px">
       <div class="pane">
         <div class="left">
           <div class="ph">USB 设备（1）</div>
           <div class="drow"><div class="l1">SA_LEMANS_IVI-</div><div class="l2">18d1:4ee7 · 系统已授权</div></div>
-          <div class="ph" style="margin-top:14px">已保存的无线（2）</div>
+          <div class="ph" style="margin-top:12px">已保存的无线（2）</div>
           <div class="drow on"><div class="l1">192.168.43.160:5555</div>
             <div class="l2" style="color:var(--ok)">● 已连接</div></div>
           <div class="drow"><div class="l1">192.168.43.46:5555</div><div class="l2">上次连接：2 天前</div></div>
@@ -594,46 +559,43 @@
             <span class="pill sm" style="background:#2B2637;color:var(--primary)">演示首选</span>
             <span class="pill sm"><span class="dot ok"></span>已连接</span>
           </div>
-          <p class="h1" style="font-size:34px;margin:18px 0 4px">192.168.43.160:5555</p>
-          <p class="sub" style="font-size:16px">无线 · 经典 TCP ADB</p>
+          <p style="font-size:36px;font-weight:700;margin:16px 0 2px;color:var(--on-surface)">192.168.43.160:5555</p>
+          <p style="font-size:16px;color:var(--on-surface-var);margin:0">无线 · 经典 TCP ADB</p>
           <div class="kv"><span class="k">显示尺寸</span><span class="v">5120 × 1600（双联屏）</span></div>
           <div class="kv"><span class="k">投屏区域</span><span class="v">全屏</span></div>
           <div class="kv"><span class="k">画质</span><span class="v">2560 边 · 8 Mbps · 30 fps</span></div>
           <div class="kv"><span class="k">ADB 授权</span><span class="v">无需（adb.secure=0）</span></div>
-          <div class="kv"><span class="k">连接方式</span><span class="v">TCP · 端口 5555</span></div>
           <div class="kv"><span class="k">本次连接</span><span class="v">20:31 起 · 已 12 分钟</span></div>
-          <div style="display:flex;gap:14px;margin-top:30px">
+          <div style="display:flex;gap:14px;margin-top:26px">
             <span class="btn filled sm">断开</span>
             <span class="btn tonal sm">投屏设置</span>
+            <span class="btn text sm">删除此设备</span>
           </div>
-          <div style="margin-top:16px"><span class="btn text sm">删除此设备</span></div>
-          <div class="note-strip">
-            <span>ⓘ</span><span>USB 设备每次重新插拔都会重新枚举，系统授权框会再次出现；无线设备不受影响。</span>
-          </div>
+          <div class="note-inline"><span>ⓘ</span><span>USB 设备每次重新插拔都会重新枚举，系统授权框会再次出现；无线设备不受影响。</span></div>
         </div>
       </div>
     </div>
   </div></div></div>
-  <p class="shot-note">左列表最多 2 类分组；右详情固定「状态 → 参数 → 动作 → 说明」四段，动作不超过两个主按钮。</p>
+  <p class="shot-note">横屏把左列表加到 480 dp，右详情能并排放状态、5 行参数和 3 个动作，不用滚动。</p>
 </div>
 
-<!-- 08 无线连接 -->
+<!-- 09 无线连接 -->
 <div class="shot">
   <div class="shot-h"><span class="idx">09</span><span class="name">无线连接</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">设备管理</span><span class="spacer"></span><span class="iconbtn">↻</span></div>
-    <div class="body" style="padding-left:26px;padding-right:26px;opacity:.4">
+    <div class="body" style="padding-left:32px;padding-right:32px;opacity:.4">
       <div class="pane">
         <div class="left">
           <div class="ph">USB 设备（1）</div>
           <div class="drow"><div class="l1">SA_LEMANS_IVI-</div><div class="l2">18d1:4ee7 · 系统已授权</div></div>
-          <div class="ph" style="margin-top:14px">已保存的无线（2）</div>
+          <div class="ph" style="margin-top:12px">已保存的无线（2）</div>
           <div class="drow"><div class="l1">192.168.43.160:5555</div><div class="l2">● 已连接</div></div>
         </div>
         <div class="right">
-          <p class="h1" style="font-size:34px;margin:18px 0 4px">192.168.43.160:5555</p>
+          <p style="font-size:36px;font-weight:700;margin:16px 0 2px;color:var(--on-surface)">192.168.43.160:5555</p>
           <div class="kv"><span class="k">显示尺寸</span><span class="v">5120 × 1600</span></div>
         </div>
       </div>
@@ -642,22 +604,22 @@
       <div class="dialog">
         <h3>添加无线设备</h3>
         <p>输入车机已开启的经典 TCP ADB 地址。</p>
-        <div class="grid2" style="margin-top:24px">
+        <div class="grid2" style="margin-top:22px">
           <div>
-            <div class="fl" style="font-size:14px;color:var(--on-surface-var);padding-left:4px;margin-bottom:8px">IPv4 地址</div>
+            <div style="font-size:14px;color:var(--on-surface-var);padding-left:4px;margin-bottom:8px">IPv4 地址</div>
             <div class="field focus"><div class="fv">192.168.43.160</div></div>
           </div>
-          <div style="max-width:220px">
-            <div class="fl" style="font-size:14px;color:var(--on-surface-var);padding-left:4px;margin-bottom:8px">端口</div>
+          <div style="max-width:240px">
+            <div style="font-size:14px;color:var(--on-surface-var);padding-left:4px;margin-bottom:8px">端口</div>
             <div class="field"><div class="fv">5555</div></div>
           </div>
         </div>
         <p style="font-size:14px;margin-top:14px">全角句点会自动纠正；连接成功后加入已保存列表。</p>
-        <div class="row" style="padding:22px 0 0;border:0">
+        <div class="row" style="padding:20px 0 0;border:0">
           <div class="rico">✓</div>
-          <div class="rtext"><div class="rtitle" style="font-size:17px">记住此设备并设为演示首选</div>
-            <div class="rsub">演示模式启动时优先连它</div></div>
-          <span class="pill sm" style="background:#2B2637;color:var(--primary)">已选</span>
+          <div class="rtext"><div class="rtitle" style="font-size:17px">记住此设备</div>
+            <div class="rsub">并设为演示模式的首选目标</div></div>
+          <span class="pill sm" style="background:#2B2637;color:var(--primary);margin-right:2px">已选</span>
         </div>
         <div class="actions"><span class="btn text">取消</span><span class="btn filled">连接</span></div>
       </div>
@@ -666,65 +628,73 @@
   <p class="shot-note">对话框而不是整页：输入只需两个字段，保持在设备管理上下文里。</p>
 </div>
 
-<!-- 09 投屏设置 -->
+<!-- 10 投屏设置 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">10</span><span class="name">投屏设置</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
+  <div class="shot-h"><span class="idx">10</span><span class="name">投屏设置 · 双栏</span></div>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏）</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
     <div class="nav"><span class="back">←</span><span class="ttl">投屏设置</span><span class="spacer"></span>
       <span class="pill sm">192.168.43.160:5555</span></div>
-    <div class="body" style="padding-bottom:0">
-      <p class="sec-label" style="margin-top:6px">投屏区域</p>
-      <div class="seg">
-        <div class="opt on"><div class="diagram"><i style="flex:1"></i><i style="flex:1"></i></div><span class="lbl">全屏</span></div>
-        <div class="opt"><div class="diagram"><i style="flex:1"></i><i style="flex:1;background:#151319"></i></div><span class="lbl">仅主屏（左）</span></div>
-        <div class="opt"><div class="diagram"><i style="flex:1;background:#151319"></i><i style="flex:1"></i></div><span class="lbl">仅副屏（右）</span></div>
-        <div class="opt"><div class="diagram" style="align-items:center;justify-content:center;color:var(--on-surface-var);font-size:14px">自定义</div><span class="lbl">自定义</span></div>
-      </div>
-      <p style="font-size:14px;color:var(--on-surface-var);margin:14px 4px 0">
-        投屏页按铺满显示，比例不一致只裁不缩：<b>仅主屏约裁 6%</b>，全屏（3.2:1）约裁 <b>53%</b> 宽度。</p>
-      <p class="sec-label">画面预览</p>
-      <div class="previewbox">
-        <div class="canvas">
-          <div class="half l"></div>
-          <div class="cbar"><span>主屏 0–2560</span><span style="margin-left:auto">副屏 2560–5120</span></div>
-          <div class="cdock2"><b></b><b></b><b></b><b></b><b></b></div>
-          <div class="sel-region"></div>
+    <div class="body">
+      <div class="cols">
+        <div class="col">
+          <p class="sec-label" style="margin-top:4px">投屏区域</p>
+          <div class="seg">
+            <div class="opt on"><div class="diagram"><i style="flex:1"></i><i style="flex:1"></i></div><span class="lbl">全屏</span></div>
+            <div class="opt"><div class="diagram"><i style="flex:1"></i><i style="flex:1;background:#151319"></i></div><span class="lbl">仅主屏（左）</span></div>
+            <div class="opt"><div class="diagram"><i style="flex:1;background:#151319"></i><i style="flex:1"></i></div><span class="lbl">仅副屏（右）</span></div>
+            <div class="opt"><div class="diagram" style="align-items:center;justify-content:center;color:var(--on-surface-var);font-size:13px">自定义</div><span class="lbl">自定义</span></div>
+          </div>
+          <p style="font-size:14px;color:var(--on-surface-var);margin:14px 4px 0">
+            投屏页按铺满显示，比例不一致只裁不缩：<b>仅主屏约裁 6%</b>，全屏（3.2:1）约裁 <b>53%</b> 宽度。</p>
+          <p class="sec-label">画面预览</p>
+          <div class="previewbox">
+            <div class="canvas">
+              <div class="half l"></div>
+              <div class="cbar"><span>主屏 0–2560</span><span style="margin-left:auto">副屏 2560–5120</span></div>
+              <div class="cdock2"><b></b><b></b><b></b><b></b></div>
+              <div class="sel-region"></div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <p class="sec-label" style="margin-top:4px">画质</p>
+          <div class="grid2">
+            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">最长边</div>
+              <div class="field"><div class="fv">2560</div></div></div>
+            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">视频码率</div>
+              <div class="field"><div class="fv">8 Mbps</div></div></div>
+          </div>
+          <div class="grid2" style="margin-top:16px">
+            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">帧率</div>
+              <div class="field"><div class="fv">30 fps</div></div></div>
+            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">显示器 ID</div>
+              <div class="field"><div class="fv">0</div></div></div>
+          </div>
+          <p class="sec-label">高级</p>
+          <div class="list" style="margin-top:0">
+            <div class="row" style="padding:20px 26px"><div class="rico" style="width:50px;height:50px;font-size:22px">◱</div><div class="rtext">
+              <div class="rtitle">自定义区域</div><div class="rsub">宽 2560 · 高 1600 · x 0 · y 0</div></div><span class="rgo">›</span></div>
+            <div class="row" style="padding:20px 26px"><div class="rico" style="width:50px;height:50px;font-size:22px">◎</div><div class="rtext">
+              <div class="rtitle">投屏服务</div><div class="rsub">scrcpy 4.0 · 运行中 · 编码器 c2.qti.avc</div></div><span class="rgo">›</span></div>
+            <div class="row" style="padding:20px 26px"><div class="rico" style="width:50px;height:50px;font-size:22px">↺</div><div class="rtext">
+              <div class="rtitle">恢复默认参数</div><div class="rsub">仅主屏 · 2560 边 · 8 Mbps · 30 fps</div></div><span class="btn text sm">重置</span></div>
+          </div>
+          <div style="margin-top:auto">
+            <span class="btn filled block">保存到这台设备</span>
+          </div>
         </div>
       </div>
-      <p class="sec-label">画质</p>
-      <div class="grid2">
-        <div><div class="fl" style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">最长边</div>
-          <div class="field"><div class="fv">2560</div></div></div>
-        <div><div class="fl" style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">视频码率</div>
-          <div class="field"><div class="fv">8 Mbps</div></div></div>
-        <div><div class="fl" style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">帧率</div>
-          <div class="field"><div class="fv">30 fps</div></div></div>
-        <div><div class="fl" style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">显示器 ID</div>
-          <div class="field"><div class="fv">0</div></div></div>
-      </div>
-      <p class="sec-label">高级</p>
-      <div class="list" style="margin-top:0">
-        <div class="row"><div class="rico">◱</div><div class="rtext">
-          <div class="rtitle">自定义区域</div><div class="rsub">宽 2560 · 高 1600 · x 0 · y 0</div></div><span class="rgo">›</span></div>
-        <div class="row"><div class="rico">↺</div><div class="rtext">
-          <div class="rtitle">恢复默认参数</div><div class="rsub">全屏 · 2560 边 · 8 Mbps · 30 fps</div></div><span class="btn text sm">重置</span></div>
-        <div class="row"><div class="rico">◎</div><div class="rtext">
-          <div class="rtitle">投屏服务</div><div class="rsub">scrcpy 4.0 · 运行中 · 编码器 c2.qti.avc</div></div><span class="rgo">›</span></div>
-      </div>
-    </div>
-    <div style="padding:22px 40px 34px">
-      <span class="btn filled block">保存到这台设备</span>
     </div>
   </div></div></div>
-  <p class="shot-note">选择区域时右侧实时画出 5120 × 1600 画布上的取景框，避免「选了仅副屏却不知道投到哪」。</p>
+  <p class="shot-note">左栏选区域并看裁切预览，右栏调画质并保存；横屏不再需要上下滚动。</p>
 </div>
 
 </div>
 
 <h2><span class="num">05</span>投屏页的三条硬要求</h2>
-<p>这一版按你的新要求重做，和原版的行为差异都写在下面，避免开发时又回到旧逻辑。</p>
+<p>这一版按你的要求重做，和原版的行为差异都写在下面，避免开发时又回到旧逻辑。</p>
 
 <h3>1. 去掉 3 秒退出按钮</h3>
 <ul>
@@ -738,26 +708,26 @@
 <ul>
   <li>缩放策略从「fit-center（等比缩小 + 居中留边）」改成 <b>cover（等比放大 + 居中裁切）</b>，四边贴边，没有任何黑边或白边。</li>
   <li>实测现状：原版 3840 × 2560 的投屏截图里，顶部约 <b>110 px</b>、底部约 <b>48 px</b> 是纯白（RGB 250,250,250）——这就是你说的上下两个白框。原因是 <code>VideoGeometry</code> 用 fit-center 算内容区，未覆盖的部分露出了窗口背景色。</li>
-  <li>代价是裁切，且比例差越大裁得越多：仅主屏（2560 × 1600 = 1.6:1）对 1.5:1 的横屏只裁约 6% 宽度；全屏（5120 × 1600 = 3.2:1）要裁掉约 53% 宽度，等于只看得到中间一部分。所以<b>建议演示默认用「仅主屏（左）」</b>，并在投屏设置里对比例差过大的选择给出提示。</li>
+  <li>代价是裁切，且比例差越大裁得越多：仅主屏（2560 × 1600 = 1.6:1）对 1.5:1 的横屏只裁约 6% 宽度；全屏（5120 × 1600 = 3.2:1）要裁掉约 53% 宽度。所以<b>建议演示默认用「仅主屏（左）」</b>，并在投屏设置里对比例差过大的选择给出提示。</li>
 </ul>
 
-<h3>3. 只支持横屏</h3>
+<h3>3. 全应用横屏</h3>
 <ul>
-  <li>投屏页锁定 <code>SCREEN_ORIENTATION_LANDSCAPE</code>，物理尺寸 3840 × 2560 px（1536 × 1024 dp）；其余页面锁定竖屏。</li>
-  <li>进入投屏时旋转到横屏、退出时回竖屏；旋转过程中不重启会话（沿用现有 <code>configChanges</code> 处理）。</li>
+  <li>不只是投屏页：首页、演示模式、设置、设备管理、无线连接、投屏设置全部按 <b>1536 × 1024 dp 横屏</b>排版，Manifest 里统一锁 <code>SCREEN_ORIENTATION_LANDSCAPE</code>。</li>
+  <li>投屏页旋转过程中不重启会话（沿用现有 <code>configChanges</code> 处理）。</li>
   <li>触控映射要按裁切后的可视区重算：内容区以屏幕中心对齐，坐标先减裁切偏移再按 cover 比例换算，不能沿用 fit-center 的换算。</li>
 </ul>
 
-<div class="note"><p><b>对实现的连带影响（确认后再动代码）：</b>①<code>VideoGeometry</code> 增加 cover 模式与裁切偏移；②<code>MirrorActivity</code> 去掉 <code>ExitHandle</code>、增加横屏锁定与一次性提示；③ 返回手势用 <code>OnBackPressedDispatcher</code> 直接结束投屏；④ 触控换算改用裁切偏移；⑤ 投屏设置里对比例差 > 15% 的区域显示裁切比例提示。</p></div>
+<div class="note"><p><b>对实现的连带影响（确认后再动代码）：</b>①<code>VideoGeometry</code> 增加 cover 模式与裁切偏移；②<code>MirrorActivity</code> 去掉 <code>ExitHandle</code>、增加一次性提示；③ 返回手势用 <code>OnBackPressedDispatcher</code> 直接结束投屏；④ 触控换算改用裁切偏移；⑤ 首页重做成两张入口卡，设置与投屏设置改为双栏；⑥ Manifest 全局锁横屏；⑦ 投屏设置里对比例差 > 15% 的区域显示裁切比例提示。</p></div>
 
 <h2><span class="num">06</span>交互与状态规则</h2>
 
-<h3>演示模式的目标选择（按你的第 2 条）</h3>
+<h3>演示模式的目标选择</h3>
 <ol>
   <li>进页面先看「设置里选中的 ADB 设备」：有就直接连它，<b>不等 USB</b>。</li>
   <li>没有选中设备（或连续两次连接失败）再监听 USB 插入；插上就自动走 USB，并在状态行写「无线不可达，已切换到 USB」。</li>
   <li>两者都不可用时停在「等待 USB 设备接入」，每 3 秒重试一次首选无线目标；失败不弹窗，只在状态行显示原因。</li>
-  <li>连上后直接进投屏页，参数取该设备已保存的设置；没有记录时用默认值：全屏 / 2560 边 / 8 Mbps / 30 fps。</li>
+  <li>连上后直接进投屏页，参数取该设备已保存的设置；没有记录时用默认值：仅主屏 / 2560 边 / 8 Mbps / 30 fps。</li>
   <li>仅在应用前台监听；切后台停止，回前台重新检查（与现有实现一致）。</li>
 </ol>
 
@@ -766,7 +736,7 @@
   <thead><tr><th>状态</th><th>视觉</th><th>可用动作</th></tr></thead>
   <tbody>
     <tr><td>未连接</td><td>灰点 +「未连接」（仅设置 / 设备管理内显示，首页不显示）</td><td>设置、演示模式</td></tr>
-    <tr><td>等 USB</td><td>琥珀点 + 脉冲圆环</td><td>更换首选、打开设置、返回</td></tr>
+    <tr><td>等 USB</td><td>琥珀点 + 脉冲圆环（左图右文）</td><td>更换首选、打开设置、返回</td></tr>
     <tr><td>连接中</td><td>四步进度，当前步高亮</td><td>取消</td></tr>
     <tr><td>投屏中</td><td>画面铺满，无按钮、无参数条</td><td>边缘内滑退出（首次进入有 3 秒提示）</td></tr>
     <tr><td>失败</td><td>错误图标 + 具体原因 + 3 条排查</td><td>重试、打开设置（插 USB 自动切换）</td></tr>
@@ -776,7 +746,7 @@
 <h3>文案规则</h3>
 <ul>
   <li>错误只说「发生了什么 + 怎么修」，不出现异常类名和英文堆栈；原始异常写日志。</li>
-  <li>参数摘要统一格式：<code>区域 · 帧率 · 码率</code>，例如「全屏 · 30 fps · 8 Mbps」。</li>
+  <li>参数摘要统一格式：<code>区域 · 帧率 · 码率</code>，例如「仅主屏 · 30 fps · 8 Mbps」。</li>
   <li>按钮动词化：连接 / 断开 / 重试 / 保存到这台设备；不用「确定」。</li>
   <li>需要用户去车机上操作时，明确写「在车机上…」，并说明只需一次。</li>
 </ul>
@@ -785,12 +755,11 @@
 <table>
   <thead><tr><th>#</th><th>问题</th><th>我的建议</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>演示模式要不要显示「正在投屏 xx 分钟」的计时？</td><td>不显示。投屏页按新要求不叠加任何常驻 UI，参数只在设置里看。</td></tr>
-    <tr><td>2</td><td>无线首选设备失败后，要不要自动回退到 USB？</td><td>要。回退时在状态行说明切换原因。</td></tr>
-    <tr><td>3</td><td>「设为演示首选」放在设备详情里，还是列表行上？</td><td>放详情页，避免列表误触。</td></tr>
-    <tr><td>4</td><td>边缘内滑退出，要不要加「连续两次」防误触？</td><td>默认不加；现场若反映误退再加。</td></tr>
-    <tr><td>5</td><td>投屏默认区域用「仅主屏（左）」还是「全屏」？</td><td>用仅主屏：铺满后只裁 6%，全屏要裁 53%。</td></tr>
-    <tr><td>6</td><td>要不要浅色主题？</td><td>不要，只做深色；车库与展厅环境更合适。</td></tr>
+    <tr><td>1</td><td>首页需不需要一行小标题（如「车机投屏」）？</td><td>按你「只有两个入口」的要求，现在完全不放；需要再加。</td></tr>
+    <tr><td>2</td><td>投屏默认区域用「仅主屏（左）」还是「全屏」？</td><td>用仅主屏：铺满后只裁 6%，全屏要裁 53%。</td></tr>
+    <tr><td>3</td><td>边缘内滑退出，要不要加「连续两次」防误触？</td><td>默认不加；现场若反映误退再加。</td></tr>
+    <tr><td>4</td><td>设置页双栏的信息量够不够？</td><td>够：左栏设备 + 管理，右栏诊断 + 统计，一屏不滚动。</td></tr>
+    <tr><td>5</td><td>要不要浅色主题？</td><td>不要，只做深色；车库与展厅环境更合适。</td></tr>
   </tbody>
 </table>
 
@@ -799,7 +768,7 @@
 </div>
 
 <footer>
-  车机投屏 · 界面改版设计稿 v1 · 2026-10-28 · 画板尺寸与 TB522FU 实机一致（2560 × 3840 px，400 dpi）
+  车机投屏 · 界面改版设计稿 v2（全横屏）· 2026-10-28 · 画板尺寸与 TB522FU 实机一致（3840 × 2560 px，400 dpi）
 </footer>
 
 </div>
