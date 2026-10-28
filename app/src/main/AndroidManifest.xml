@@ -1,7 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="车机投屏" android:allowBackup="false">
+    <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="车机投屏"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false">
         <activity android:name=".MirrorActivity" android:exported="false"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden" />
