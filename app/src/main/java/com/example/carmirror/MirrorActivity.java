@@ -10,7 +10,6 @@ import com.example.carmirror.adb.AdbSession;
 import com.example.carmirror.adb.ConnectionOwner;
 import com.example.carmirror.scrcpy.*;
 import com.example.carmirror.ui.ControlQueue;
-import com.example.carmirror.ui.ExitHandle;
 import com.example.carmirror.ui.ForegroundDevices;
 import com.example.carmirror.ui.MirrorIntent;
 import com.example.carmirror.ui.DisplaySize;
@@ -48,7 +47,7 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   private FrameLayout root;
   private SurfaceView surface;
   private TextView status;
-  private ExitHandle exit;
+  private TextView hint;
   private int streamWidth,streamHeight;
   private final Handler handler=new Handler(Looper.getMainLooper());
   /** Warn once when one control write is slow; fail only once it is clearly stuck. */
@@ -76,9 +75,13 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     surface.setOnTouchListener((v,e)->forward(e,surface.getX(),surface.getY()));
     root.setOnTouchListener((v,e)->forward(e,0,0));
     status=new TextView(this);status.setTextColor(Color.WHITE);status.setText("正在启动投屏…");root.addView(status);
-    exit=new ExitHandle(this,()->{foreground.demo.userExit();setResult(RESULT_OK);closeSession();finish();});int size=(int)(64*getResources().getDisplayMetrics().density);FrameLayout.LayoutParams handle=new FrameLayout.LayoutParams(size,size,Gravity.TOP|Gravity.RIGHT);root.addView(exit,handle);
-    // Gravity only establishes the initial position; explicit x/y then support clamped dragging.
-    root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->{layoutVideo();exit.setX(Math.max(0,Math.min(root.getWidth()-exit.getWidth(),exit.getX())));exit.setY(Math.max(0,Math.min(root.getHeight()-exit.getHeight(),exit.getY())));});
+    hint=exitHint();
+    root.addView(hint);
+    root.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,or,ob)->layoutVideo());
+    // No on-screen exit control: the system back gesture (edge swipe) ends the mirror, and a
+    // one-shot hint teaches it so the screen stays completely clean afterwards.
+    setResult(RESULT_OK);
+    handler.postDelayed(()->root.removeView(hint),3000);
     adb=ConnectionOwner.get(this);if(!ConnectionOwner.isConnected()){fail(new IOException("连接已失效，请返回后重新连接"));return;}
     try{options=MirrorIntent.read(getIntent());cropGate=new CropValidationGate(options.crop);}catch(IllegalArgumentException e){fail(e);return;}
     decoder=new VideoDecoder();
@@ -126,12 +129,35 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     });}catch(RejectedExecutionException ignored){}
   }
   private void invalidCrop(Exception error){
-    fail(new IllegalArgumentException("投屏区域设置已失效或无法确认显示尺寸："+error.getMessage()+"；请长按 × 退出，在主页重新读取尺寸并修改区域"),false);
+    fail(new IllegalArgumentException("投屏区域设置已失效或无法确认显示尺寸："+error.getMessage()+"；请从屏幕边缘内滑退出，在设置里重新读取尺寸并修改区域"),false);
+  }
+  /** Shown once per launch for three seconds, then removed; never interactive. */
+  private TextView exitHint(){
+    TextView t=new TextView(this);
+    t.setText("从屏幕边缘内滑可退出投屏");
+    t.setTextColor(0xFFF5EFF5);
+    t.setTextSize(16);
+    t.setPadding(dp(22),dp(11),dp(22),dp(11));
+    android.graphics.drawable.GradientDrawable bg=new android.graphics.drawable.GradientDrawable();
+    bg.setColor(0xD91A1218);bg.setCornerRadius(dp(999));
+    bg.setStroke(dp(1),0x3DFFFFFF);t.setBackground(bg);
+    FrameLayout.LayoutParams p=new FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.WRAP_CONTENT,FrameLayout.LayoutParams.WRAP_CONTENT);
+    p.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL;p.topMargin=dp(30);
+    t.setLayoutParams(p);
+    return t;
+  }
+  private int dp(float value){return Math.round(value*getResources().getDisplayMetrics().density);}
+  @Override public void onBackPressed(){
+    setResult(RESULT_OK);
+    closeSession();
+    finish();
   }
   private void immersive(){getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);}
   @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus)immersive();}
   private void layoutVideo(){if(streamWidth<=0||root.getWidth()==0||root.getHeight()==0)return;
-    VideoGeometry next=new VideoGeometry(streamWidth,streamHeight,0,0,root.getWidth(),root.getHeight());
+    // COVER: scale up and centre-crop so the stream fills the screen with no bars.
+    VideoGeometry next=new VideoGeometry(streamWidth,streamHeight,0,0,root.getWidth(),root.getHeight(),true);
     geometry=next;FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)surface.getLayoutParams();int w=Math.round(next.contentWidth()),h=Math.round(next.contentHeight());
     if(p.width!=w||p.height!=h){p.width=w;p.height=h;surface.setLayoutParams(p);}surface.setX(next.contentLeft);surface.setY(next.contentTop);
   }
@@ -154,12 +180,11 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     return true;
   }
   private void cancelTouch(){VideoGeometry g=geometry;submit(()->{if(touch!=null)touch.onTouch(new TouchSample(3,0,0,0,0),g);});}
-  @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();exit.cancel();geometry=null;if(streamWidth>0)validateGeometry(streamWidth,streamHeight);}
+  @Override public void onConfigurationChanged(Configuration config){super.onConfigurationChanged(config);cancelTouch();geometry=null;if(streamWidth>0)validateGeometry(streamWidth,streamHeight);}
   @Override protected void onStart(){super.onStart();foreground.detached=()->{closeSession();finish();};foreground.start();}
   @Override protected void onStop(){foreground.detached=null;foreground.stop();if(!isChangingConfigurations()&&!isFinishing()){closeSession();finish();}super.onStop();}
   @Override protected void onResume(){super.onResume();resumed=true;attachSurfaceIfReady();}
-  @Override protected void onPause(){resumed=false;cancelTouch();exit.cancel();if(decoder!=null&&!closed.get())decoder.attach(null);super.onPause();}
-  @Override public void onBackPressed(){submit(()->{if(writer!=null){writer.keycode(0,4);writer.keycode(1,4);}});}
+  @Override protected void onPause(){resumed=false;cancelTouch();if(decoder!=null&&!closed.get())decoder.attach(null);super.onPause();}
   /** The projection stream ended or stalled; the ADB link itself may still be healthy. */
   static final class LinkLost extends IOException{LinkLost(String message){super(message);}}
   private static final int MAX_RECONNECTS=5;

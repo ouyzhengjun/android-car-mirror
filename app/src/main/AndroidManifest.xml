@@ -1,9 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:theme="@android:style/Theme.Material.Light.NoActionBar" android:label="车机投屏" android:allowBackup="false">
-        <activity android:name=".MirrorActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
-        <activity android:name=".MainActivity" android:exported="true">
+    <application android:theme="@android:style/Theme.Material.NoActionBar" android:label="车机投屏" android:allowBackup="false">
+        <activity android:name=".MirrorActivity" android:exported="false"
+            android:screenOrientation="landscape"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+        <activity android:name=".DemoActivity" android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity android:name=".SettingsActivity" android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity android:name=".DeviceManagerActivity" android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity android:name=".MirrorSettingsActivity" android:exported="false"
+            android:screenOrientation="landscape" />
+        <activity android:name=".MainActivity" android:exported="true"
+            android:screenOrientation="landscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

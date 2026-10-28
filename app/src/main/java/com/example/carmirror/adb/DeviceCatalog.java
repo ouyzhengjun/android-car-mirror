@@ -23,6 +23,12 @@ public final class DeviceCatalog {
     entries.values().removeIf(e->e.usb!=null&&!present.contains(e.id));
     if(selected!=null&&!entries.containsKey(selected)) selected=null;
   }
+  /** Drops a saved wireless endpoint; the caller already removed it from preferences. */
+  public synchronized void removeTcp(String serial) {
+    String id = "tcp:" + serial;
+    entries.remove(id);
+    if (id.equals(selected)) selected = null;
+  }
   public synchronized void select(String id) {
     if(!entries.containsKey(id))throw new IllegalArgumentException("Unknown device: "+id);
     if(!id.equals(selected)&&selected!=null) {
