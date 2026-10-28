@@ -185,6 +185,8 @@ public final class MirrorSettingsActivity extends Activity {
     right.addView(new View(this), Ui.lp(0, 0, 1));
     TextView save = Ui.button(this, "保存到这台设备", true, v -> {
       try {
+        if (ConnectionOwner.catalog().selected() == null)
+          throw new IllegalArgumentException("请先在设备管理里选择一台设备");
         MirrorSettings next = collect();
         store.dual(ConnectionOwner.catalog().selected(), dual);
         store.save(ConnectionOwner.catalog().selected(), next);
