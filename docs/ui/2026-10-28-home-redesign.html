@@ -60,6 +60,11 @@
     border-radius:18px;box-shadow:0 18px 46px rgba(0,0,0,.55),0 0 0 1px #2A2831}
   .device{width:calc(var(--dp) * var(--scale-device));height:calc(var(--dph) * var(--scale-device));
     transform:scale(var(--preview));transform-origin:0 0}
+  /* 投屏页是横屏：1536 x 1024 dp = 3840 x 2560 px */
+  .shot.wide{width:calc(3840px * var(--preview))}
+  .preview.land{width:calc(3840px * var(--preview));height:calc(2560px * var(--preview))}
+  .device.land{width:calc(3840px);height:calc(2560px)}
+  .dp.land{width:1536px;height:1024px;transform:scale(var(--scale-device));transform-origin:0 0}
   .dp{position:relative;display:flex;flex-direction:column;width:var(--dp);height:var(--dph);overflow:hidden;
     background:var(--surface);transform:scale(var(--scale-device));transform-origin:0 0;color:var(--on-surface);
     font-size:17px;line-height:1.45}
@@ -212,7 +217,26 @@
   .dialog p{margin:0;font-size:16px}
   .dialog .actions{display:flex;justify-content:flex-end;gap:14px;margin-top:34px}
 
-  .mirror{position:absolute;inset:0;background:#000;display:grid;place-items:center}
+  .mirror{position:absolute;inset:0;background:#000;overflow:hidden}
+  /* 铺满：视频按 cover 缩放，超出部分裁掉，四边都不留白 */
+  .bleed{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:1638px;height:1024px;background:linear-gradient(180deg,#8A6A7C 0%,#5C4452 56%,#372934 100%)}
+  .bleed .cnav{position:absolute;left:0;right:0;top:0;height:52px;background:rgba(0,0,0,.3);
+    display:flex;align-items:center;gap:30px;padding:0 96px;font-size:17px;color:#F1E8EC}
+  .bleed .cdock{position:absolute;left:0;right:0;bottom:0;height:72px;background:rgba(0,0,0,.46);
+    display:flex;align-items:center;justify-content:center;gap:44px}
+  .bleed .cdock b{width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.84);display:block}
+  .anno{position:absolute;font-size:14px;line-height:1.45;color:#F2ECF2;background:rgba(10,8,12,.86);
+    border:1px solid rgba(255,255,255,.26);border-radius:10px;padding:9px 13px;max-width:340px}
+  .anno b{color:var(--primary)}
+  .edge{position:absolute;top:0;bottom:0;width:30px;
+    background:repeating-linear-gradient(45deg,rgba(208,188,255,.4) 0 9px,rgba(208,188,255,.12) 9px 18px);
+    border-left:1px solid rgba(208,188,255,.55);border-right:1px solid rgba(208,188,255,.55)}
+  .cropband{position:absolute;top:0;bottom:0;width:44px;background:rgba(0,0,0,.58);
+    border-left:1px dashed rgba(255,255,255,.55);border-right:1px dashed rgba(255,255,255,.55)}
+  .hintbar{position:absolute;left:50%;transform:translateX(-50%);top:30px;
+    background:rgba(10,8,12,.82);border:1px solid rgba(255,255,255,.24);border-radius:999px;
+    padding:11px 22px;font-size:16px;color:#F5EFF5}
   .car{width:1024px;height:320px;background:linear-gradient(180deg,#7E6070 0%,#5C4452 60%,#3A2C36 100%);
     position:relative;overflow:hidden}
   .car .cnum{position:absolute;left:0;right:0;top:0;height:42px;display:flex;align-items:center;
@@ -256,6 +280,7 @@
     <span class="chip">逻辑尺寸 <b>1024 × 1536 dp</b></span>
     <span class="chip">密度 <b>400 dpi @2.5×</b></span>
     <span class="chip">主题 <b>Material 3 深色</b></span>
+    <span class="chip">投屏页 <b>3840 × 2560 px 横屏</b></span>
   </div>
   <div class="gate">
     <p><b>开发门禁：</b>本文件只到设计稿。下面每块画板都是 2560 × 3840 px 的等比稿（内容按 dp 编排后整体 ×2.5），你确认版式、文案和交互规则之后我再动代码。</p>
@@ -336,7 +361,7 @@
   <tbody>
     <tr><td>首页</td><td>两个入口：演示模式 / 设置；顶部显示当前链路状态</td><td>演示模式、设置</td></tr>
     <tr><td>演示模式</td><td>持续找目标：<b>设置中选中的设备优先</b>，其次等 USB 插入；一旦可用就直接按已保存参数投屏</td><td>投屏页、设置、返回</td></tr>
-    <tr><td>投屏页</td><td>全屏画面 + 可拖动 ×（长按 3 秒退出）</td><td>退出回演示模式</td></tr>
+    <tr><td>投屏页</td><td>只锁横屏、只放画面，铺满无留白、无任何悬浮 UI；从屏幕边缘内滑退出</td><td>退出回演示模式</td></tr>
     <tr><td>设置</td><td>概览：当前设备、四个子页入口、诊断</td><td>设备管理、无线连接、投屏设置</td></tr>
     <tr><td>设备管理</td><td>左列表右详情：USB 候选与已存无线设备，连接 / 断开 / 设为首选 / 删除</td><td>无线连接、投屏设置</td></tr>
     <tr><td>无线连接</td><td>输入 IP + 端口，记住此设备</td><td>设备管理（连接成功后）</td></tr>
@@ -446,28 +471,48 @@
   <p class="shot-note">分步进度而不是转圈，现场出问题能立刻看出停在哪一步。</p>
 </div>
 
-<!-- 04 投屏页 -->
-<div class="shot">
-  <div class="shot-h"><span class="idx">04</span><span class="name">投屏页</span></div>
-  <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
-  <div class="preview"><div class="device"><div class="dp">
+<!-- 04 投屏页（横屏铺满，无 UI） -->
+<div class="shot wide">
+  <div class="shot-h"><span class="idx">04</span><span class="name">投屏页 · 实机效果</span></div>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏，锁定）</p>
+  <div class="preview land"><div class="device land"><div class="dp land">
     <div class="mirror">
-      <div class="car">
-        <div class="cnum"><span>◉</span><span>◍</span><span>▤</span><span>ϟ</span><span style="flex:1"></span><span>20:31</span></div>
-        <div class="cdock"><b></b><b></b><b></b><b></b><b></b><b></b></div>
+      <div class="bleed">
+        <div class="cnav"><span>◉</span><span>◍</span><span>▤</span><span>ϟ</span><span style="flex:1"></span><span>20:31</span></div>
+        <div class="cdock"><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
       </div>
-      <div class="bubble">按住 3 秒退出</div>
-      <div class="exit">×</div>
-      <div class="param-chip">全屏 · 30 fps · 8 Mbps</div>
     </div>
   </div></div></div>
-  <p class="shot-note">按真实比例画：车机 5120 × 1600 = 3.2:1，竖屏平板上「全屏」只有 1024 × 320 dp，约 1/5 屏高，上下全是黑边。<br>
-  <b>建议演示模式默认用「仅主屏（左）」</b>（2560 × 1600 = 1.6:1，可用高度 1024 × 640 dp），画面也更容易看清。</p>
+  <p class="shot-note">画面按 <b>cover</b> 铺满整个横屏，四边零留白：没有退出按钮、没有参数条、没有提示气泡，屏幕上只有车机画面本身。</p>
+</div>
+
+<!-- 05 投屏页（交互标注） -->
+<div class="shot wide">
+  <div class="shot-h"><span class="idx">05</span><span class="name">投屏页 · 交互标注</span></div>
+  <p class="shot-spec">3840 × 2560 px · 1536 × 1024 dp（横屏，锁定）</p>
+  <div class="preview land"><div class="device land"><div class="dp land">
+    <div class="mirror">
+      <div class="bleed">
+        <div class="cnav"><span>◉</span><span>◍</span><span>▤</span><span>ϟ</span><span style="flex:1"></span><span>20:31</span></div>
+        <div class="cdock"><b></b><b></b><b></b><b></b><b></b><b></b><b></b></div>
+      </div>
+      <div class="cropband" style="left:0"></div>
+      <div class="cropband" style="right:0"></div>
+      <div class="edge" style="left:44px"></div>
+      <div class="edge" style="right:44px"></div>
+      <div class="hintbar">从屏幕边缘内滑可退出投屏</div>
+      <div class="anno" style="left:70px;bottom:96px">① <b>铺满无留白</b><br>按 cover 缩放，四边贴边</div>
+      <div class="anno" style="right:70px;bottom:96px">② <b>两侧裁切区</b><br>区域比例与屏幕不一致时，只裁不缩</div>
+      <div class="anno" style="left:120px;top:96px">③ <b>边缘内滑 = 退出</b><br>左右各 40 dp 系统手势区</div>
+      <div class="anno" style="right:120px;top:96px">④ <b>首次进入提示</b><br>显示 3 秒后自动消失，之后不再出现</div>
+    </div>
+  </div></div></div>
+  <p class="shot-note">四类标注只用于评审说明，实机不显示任何其中元素；④ 只在新装或改过区域后的第一次进入出现。</p>
 </div>
 
 <!-- 05 演示模式 失败 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">05</span><span class="name">演示模式 · 失败</span></div>
+  <div class="shot-h"><span class="idx">06</span><span class="name">演示模式 · 失败</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
@@ -492,7 +537,7 @@
 
 <!-- 06 设置 概览 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">06</span><span class="name">设置 · 概览</span></div>
+  <div class="shot-h"><span class="idx">07</span><span class="name">设置 · 概览</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
@@ -539,7 +584,7 @@
 
 <!-- 07 设备管理 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">07</span><span class="name">设备管理（左列表 / 右详情）</span></div>
+  <div class="shot-h"><span class="idx">08</span><span class="name">设备管理（左列表 / 右详情）</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
@@ -585,7 +630,7 @@
 
 <!-- 08 无线连接 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">08</span><span class="name">无线连接</span></div>
+  <div class="shot-h"><span class="idx">09</span><span class="name">无线连接</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
@@ -634,7 +679,7 @@
 
 <!-- 09 投屏设置 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">09</span><span class="name">投屏设置</span></div>
+  <div class="shot-h"><span class="idx">10</span><span class="name">投屏设置</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
@@ -648,6 +693,8 @@
         <div class="opt"><div class="diagram"><i style="flex:1;background:#151319"></i><i style="flex:1"></i></div><span class="lbl">仅副屏（右）</span></div>
         <div class="opt"><div class="diagram" style="align-items:center;justify-content:center;color:var(--on-surface-var);font-size:14px">自定义</div><span class="lbl">自定义</span></div>
       </div>
+      <p style="font-size:14px;color:var(--on-surface-var);margin:14px 4px 0">
+        投屏页按铺满显示，比例不一致只裁不缩：<b>仅主屏约裁 6%</b>，全屏（3.2:1）约裁 <b>53%</b> 宽度。</p>
       <p class="sec-label">画面预览</p>
       <div class="previewbox">
         <div class="canvas">
@@ -687,7 +734,34 @@
 
 </div>
 
-<h2><span class="num">05</span>交互与状态规则</h2>
+<h2><span class="num">05</span>投屏页的三条硬要求</h2>
+<p>这一版按你的新要求重做，和原版的行为差异都写在下面，避免开发时又回到旧逻辑。</p>
+
+<h3>1. 去掉 3 秒退出按钮</h3>
+<ul>
+  <li>不再有 × 浮窗，也不再有「按住 3 秒退出」气泡；投屏页上不叠加任何常驻 UI。</li>
+  <li>退出改用<b>系统返回手势</b>：从屏幕左/右边缘向内滑。左右各留 40 dp 给系统手势区，这 40 dp 不再转发给车机（实际影响：车机画面最外侧约 2.6% 宽度的点击落不到）。</li>
+  <li>可发现性靠一次性提示：新装或改过投屏区域后的第一次进入，顶部显示「从屏幕边缘内滑可退出投屏」，3 秒后自动消失，之后不再出现。</li>
+  <li>如果现场担心误触退出，可选加「退出前需在 2 秒内连续两次边缘内滑」；默认不加。</li>
+</ul>
+
+<h3>2. 铺满整个屏幕，不留白</h3>
+<ul>
+  <li>缩放策略从「fit-center（等比缩小 + 居中留边）」改成 <b>cover（等比放大 + 居中裁切）</b>，四边贴边，没有任何黑边或白边。</li>
+  <li>实测现状：原版 3840 × 2560 的投屏截图里，顶部约 <b>110 px</b>、底部约 <b>48 px</b> 是纯白（RGB 250,250,250）——这就是你说的上下两个白框。原因是 <code>VideoGeometry</code> 用 fit-center 算内容区，未覆盖的部分露出了窗口背景色。</li>
+  <li>代价是裁切，且比例差越大裁得越多：仅主屏（2560 × 1600 = 1.6:1）对 1.5:1 的横屏只裁约 6% 宽度；全屏（5120 × 1600 = 3.2:1）要裁掉约 53% 宽度，等于只看得到中间一部分。所以<b>建议演示默认用「仅主屏（左）」</b>，并在投屏设置里对比例差过大的选择给出提示。</li>
+</ul>
+
+<h3>3. 只支持横屏</h3>
+<ul>
+  <li>投屏页锁定 <code>SCREEN_ORIENTATION_LANDSCAPE</code>，物理尺寸 3840 × 2560 px（1536 × 1024 dp）；其余页面锁定竖屏。</li>
+  <li>进入投屏时旋转到横屏、退出时回竖屏；旋转过程中不重启会话（沿用现有 <code>configChanges</code> 处理）。</li>
+  <li>触控映射要按裁切后的可视区重算：内容区以屏幕中心对齐，坐标先减裁切偏移再按 cover 比例换算，不能沿用 fit-center 的换算。</li>
+</ul>
+
+<div class="note"><p><b>对实现的连带影响（确认后再动代码）：</b>①<code>VideoGeometry</code> 增加 cover 模式与裁切偏移；②<code>MirrorActivity</code> 去掉 <code>ExitHandle</code>、增加横屏锁定与一次性提示；③ 返回手势用 <code>OnBackPressedDispatcher</code> 直接结束投屏；④ 触控换算改用裁切偏移；⑤ 投屏设置里对比例差 > 15% 的区域显示裁切比例提示。</p></div>
+
+<h2><span class="num">06</span>交互与状态规则</h2>
 
 <h3>演示模式的目标选择（按你的第 2 条）</h3>
 <ol>
@@ -705,7 +779,7 @@
     <tr><td>未连接</td><td>灰点 +「未连接」</td><td>设置、演示模式</td></tr>
     <tr><td>等 USB</td><td>琥珀点 + 脉冲圆环</td><td>更换首选、打开设置、返回</td></tr>
     <tr><td>连接中</td><td>四步进度，当前步高亮</td><td>取消</td></tr>
-    <tr><td>投屏中</td><td>全屏画面 + 半透明参数条</td><td>拖动 ×、长按 3 秒退出</td></tr>
+    <tr><td>投屏中</td><td>画面铺满，无按钮、无参数条</td><td>边缘内滑退出（首次进入有 3 秒提示）</td></tr>
     <tr><td>失败</td><td>错误图标 + 具体原因 + 3 条排查</td><td>重试、打开设置（插 USB 自动切换）</td></tr>
   </tbody>
 </table>
@@ -718,15 +792,16 @@
   <li>需要用户去车机上操作时，明确写「在车机上…」，并说明只需一次。</li>
 </ul>
 
-<h2><span class="num">06</span>需要你拍板的地方</h2>
+<h2><span class="num">07</span>需要你拍板的地方</h2>
 <table>
   <thead><tr><th>#</th><th>问题</th><th>我的建议</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td>演示模式要不要显示「正在投屏 xx 分钟」的计时？</td><td>不显示，保持极简；只在退出浮窗旁给参数条。</td></tr>
+    <tr><td>1</td><td>演示模式要不要显示「正在投屏 xx 分钟」的计时？</td><td>不显示。投屏页按新要求不叠加任何常驻 UI，参数只在设置里看。</td></tr>
     <tr><td>2</td><td>无线首选设备失败后，要不要自动回退到 USB？</td><td>要。回退时在状态行说明切换原因。</td></tr>
     <tr><td>3</td><td>「设为演示首选」放在设备详情里，还是列表行上？</td><td>放详情页，避免列表误触。</td></tr>
-    <tr><td>4</td><td>投屏页是否保留双指缩放 / 双击全屏？</td><td>暂不做，先把单指触控和退出做稳。</td></tr>
-    <tr><td>5</td><td>要不要浅色主题？</td><td>不要，只做深色；车库与展厅环境更合适。</td></tr>
+    <tr><td>4</td><td>边缘内滑退出，要不要加「连续两次」防误触？</td><td>默认不加；现场若反映误退再加。</td></tr>
+    <tr><td>5</td><td>投屏默认区域用「仅主屏（左）」还是「全屏」？</td><td>用仅主屏：铺满后只裁 6%，全屏要裁 53%。</td></tr>
+    <tr><td>6</td><td>要不要浅色主题？</td><td>不要，只做深色；车库与展厅环境更合适。</td></tr>
   </tbody>
 </table>
 
