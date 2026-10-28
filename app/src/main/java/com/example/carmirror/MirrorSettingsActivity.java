@@ -30,6 +30,9 @@ public final class MirrorSettingsActivity extends Activity {
   private TextView singleLabel, dualLabel;
   private boolean nativeSize = true;
   private int secondaryDisplayId = -1;
+  private boolean cover;
+  private boolean coverTouched;
+  private TextView coverLabel, fitLabel;
   private TextView nativeLabel, customSizeLabel, detected;
   private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
   private final java.util.concurrent.ExecutorService worker =
@@ -47,16 +50,20 @@ public final class MirrorSettingsActivity extends Activity {
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
+    // Touching the catalog or connecting needs the process-scoped session to exist.
+    ConnectionOwner.get(this);
     store = new MirrorSettingsStore(this);
     SavedDevices.seed(this);
     final DeviceEntry entry = ConnectionOwner.catalog().selected();
     dual = store.hasDual(entry) ? store.dual(entry) : false;
     MirrorSettings settings = store.load(entry);
     nativeSize = settings.nativeSize;
+    cover = settings.cover;
     region = settings.region.ordinal();
     if (!dual && region > 0 && region < 3) region = 0;
     setContentView(buildUi(settings));
     renderSizeMode();
+    renderFillMode();
     refreshPreview();
     detectDisplay(entry);
   }
@@ -168,6 +175,15 @@ public final class MirrorSettingsActivity extends Activity {
     dp.topMargin = Ui.dp(this, 10);
     right.addView(detected, dp);
 
+    right.addView(sectionLabel("画面填充"));
+    LinearLayout fillModes = Ui.row(this);
+    fillModes.addView(fillMode(false));
+    LinearLayout.LayoutParams fmp = new LinearLayout.LayoutParams(0,
+        LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+    fmp.leftMargin = Ui.dp(this, 14);
+    fillModes.addView(fillMode(true), fmp);
+    right.addView(fillModes);
+
     right.addView(sectionLabel("画质"));
     LinearLayout qualityRow = Ui.row(this);
     display = number(right, qualityRow, "显示器 ID", settings.displayId);
@@ -254,6 +270,11 @@ public final class MirrorSettingsActivity extends Activity {
     option.setOnClickListener(v -> {
       dual = !single;
       if (!dual && region > 0 && region < 3) region = 0;
+      // 联屏默认铺满（裁切本来就是取景），单屏默认完整，除非用户已经手动选过。
+      if (!coverTouched) {
+        cover = dual;
+        renderFillMode();
+      }
       refreshPreview();
     });
     return option;
@@ -277,6 +298,48 @@ public final class MirrorSettingsActivity extends Activity {
     for (int i = 1; i <= 2; i++) {
       if (regionOptions[i] != null) regionOptions[i].setVisibility(dual ? View.VISIBLE : View.GONE);
     }
+  }
+
+  /** 「完整」保证车机画面一点不丢；「铺满」用裁切换满屏。 */
+  private View fillMode(final boolean fill) {
+    LinearLayout option = Ui.column(this);
+    option.setGravity(Gravity.CENTER);
+    option.setPadding(Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14));
+    TextView title = Ui.text(this, fill ? "铺满（裁切）" : "完整（留黑边）", 16, Ui.ON_VAR);
+    title.setGravity(Gravity.CENTER);
+    option.addView(title);
+    TextView hint = Ui.text(this, fill ? "填满屏幕，切掉溢出的两侧" : "整幅画面都显示，上下留黑边", 13,
+        Ui.ON_VAR);
+    hint.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    hp.topMargin = Ui.dp(this, 5);
+    option.addView(hint, hp);
+    option.setClickable(true);
+    option.setFocusable(true);
+    if (fill) coverLabel = title; else fitLabel = title;
+    option.setOnClickListener(v -> {
+      cover = fill;
+      coverTouched = true;
+      renderFillMode();
+    });
+    return option;
+  }
+
+  private void renderFillMode() {
+    if (coverLabel == null) return;
+    coverLabel.setTextColor(cover ? Ui.PRIMARY : Ui.ON_VAR);
+    fitLabel.setTextColor(cover ? Ui.ON_VAR : Ui.PRIMARY);
+    coverLabel.setTypeface(coverLabel.getTypeface(),
+        cover ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    fitLabel.setTypeface(fitLabel.getTypeface(),
+        cover ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
+    ((View) coverLabel.getParent()).setBackground(cover
+        ? Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this)
+        : Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this));
+    ((View) fitLabel.getParent()).setBackground(cover
+        ? Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this)
+        : Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this));
   }
 
   /** 「跟随车机」把编码尺寸交给实测分辨率，避免人为缩放。 */
@@ -410,7 +473,7 @@ public final class MirrorSettingsActivity extends Activity {
             ? new CropRect(number(width, 2, CAR_WIDTH), number(height, 2, CAR_HEIGHT),
                 number(x, 0, CAR_WIDTH), number(y, 0, CAR_HEIGHT))
             : null,
-        nativeSize, secondaryDisplayId);
+        nativeSize, secondaryDisplayId, cover);
   }
 
   private int number(EditText field, int min, int max) {
@@ -471,7 +534,7 @@ public final class MirrorSettingsActivity extends Activity {
         : null;
     preview.setMode(region, custom);
     preview.invalidate();
-    previewNote.setText("投屏页按铺满显示，比例不一致只裁不缩：" + cropSummary());
+    previewNote.setText(cropSummary());
   }
 
   private int safeNumber(EditText field, int fallback) {
@@ -485,7 +548,11 @@ public final class MirrorSettingsActivity extends Activity {
 
   /** Explains how much of the chosen region will be cropped to fill a 1536 x 1024 dp screen. */
   private String cropSummary() {
-    if (!dual) return "单屏车机整幅投放，不裁切，也不放大";
+    if (!dual) {
+      return cover
+          ? "铺满：填满屏幕，按比例裁掉两侧（16:9 车机在 3:2 平板上约裁 16% 宽度）"
+          : "完整：整幅画面都显示，16:9 车机在 3:2 平板上会上下留黑边（约 8% 高度）";
+    }
     float regionWidth, regionHeight;
     switch (MirrorSettings.Region.values()[region]) {
       case MAIN:
@@ -502,6 +569,7 @@ public final class MirrorSettingsActivity extends Activity {
         regionHeight = CAR_HEIGHT;
         break;
     }
+    if (!cover) return "完整：整幅画面都显示，上下留黑边，不裁切";
     float screenRatio = 1536f / 1024f;
     float regionRatio = regionWidth / regionHeight;
     int cropped;

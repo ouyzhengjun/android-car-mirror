@@ -31,6 +31,8 @@ public final class SettingsActivity extends Activity {
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
+    // Touching the catalog or connecting needs the process-scoped session to exist.
+    ConnectionOwner.get(this);
     store = new MirrorSettingsStore(this);
     SavedDevices.seed(this);
     LinearLayout root = Ui.column(this);

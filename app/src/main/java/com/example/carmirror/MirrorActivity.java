@@ -68,8 +68,9 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
   @Override public void onCreate(Bundle state){super.onCreate(state);
     foreground=ForegroundDevices.get(this);
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-    immersive();
     root=new FrameLayout(this);root.setBackgroundColor(Color.BLACK);setContentView(root);
+    // Insets controller needs a decor view, so this must run after setContentView.
+    immersive();
     surface=new SurfaceView(this);root.addView(surface,new FrameLayout.LayoutParams(1,1));surface.getHolder().addCallback(this);
     // Root receives content and black-bar coordinates using the same fit-center geometry.
     surface.setOnTouchListener((v,e)->forward(e,surface.getX(),surface.getY()));
@@ -153,11 +154,24 @@ public final class MirrorActivity extends Activity implements SurfaceHolder.Call
     closeSession();
     finish();
   }
-  private void immersive(){getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);}
+  private void immersive(){
+    Window window=getWindow();
+    if(android.os.Build.VERSION.SDK_INT>=30){
+      // Legacy flags leave the gesture bar visible on newer tablets; the controller is exact.
+      window.setDecorFitsSystemWindows(false);
+      WindowInsetsController bars=window.getInsetsController();
+      if(bars!=null){
+        bars.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        bars.hide(WindowInsets.Type.systemBars());
+      }
+    }else{
+      window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_FULLSCREEN|View.SYSTEM_UI_FLAG_HIDE_NAVIGATION|View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY|View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+    }
+  }
   @Override public void onWindowFocusChanged(boolean focus){super.onWindowFocusChanged(focus);if(focus)immersive();}
   private void layoutVideo(){if(streamWidth<=0||root.getWidth()==0||root.getHeight()==0)return;
-    // COVER: scale up and centre-crop so the stream fills the screen with no bars.
-    VideoGeometry next=new VideoGeometry(streamWidth,streamHeight,0,0,root.getWidth(),root.getHeight(),true);
+    VideoGeometry next=new VideoGeometry(streamWidth,streamHeight,0,0,root.getWidth(),
+        root.getHeight(),options==null||options.cover);
     geometry=next;FrameLayout.LayoutParams p=(FrameLayout.LayoutParams)surface.getLayoutParams();int w=Math.round(next.contentWidth()),h=Math.round(next.contentHeight());
     if(p.width!=w||p.height!=h){p.width=w;p.height=h;surface.setLayoutParams(p);}surface.setX(next.contentLeft);surface.setY(next.contentTop);
   }

@@ -12,6 +12,8 @@ public final class MirrorSettings {
   public final boolean nativeSize;
   /** Display id of the second physical panel, or -1 when both halves live on one panel. */
   public final int secondaryDisplayId;
+  /** True fills the screen (crops); false shows the whole picture with dark bars. */
+  public final boolean cover;
 
   public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps, CropRect customCrop) {
     this(region, displayId, maxSize, bitRate, maxFps, customCrop, false);
@@ -24,6 +26,12 @@ public final class MirrorSettings {
 
   public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps,
       CropRect customCrop, boolean nativeSize, int secondaryDisplayId) {
+    this(region, displayId, maxSize, bitRate, maxFps, customCrop, nativeSize, secondaryDisplayId,
+        true);
+  }
+
+  public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps,
+      CropRect customCrop, boolean nativeSize, int secondaryDisplayId, boolean cover) {
     this.region = Objects.requireNonNull(region);
     new MirrorOptions(displayId, customCrop, maxSize, bitRate, maxFps);
     this.displayId = displayId;
@@ -33,6 +41,7 @@ public final class MirrorSettings {
     this.customCrop = customCrop;
     this.nativeSize = nativeSize;
     this.secondaryDisplayId = secondaryDisplayId;
+    this.cover = cover;
   }
 
   /** scrcpy only downscales when the longest side exceeds max_size, so round up to 16 and stop. */
@@ -67,6 +76,6 @@ public final class MirrorSettings {
     int cap = nativeSize && displayWidth > 0 && displayHeight > 0
         ? capFor(displayWidth, displayHeight)
         : maxSize;
-    return new MirrorOptions(target, crop, cap, bitRate, maxFps);
+    return new MirrorOptions(target, crop, cap, bitRate, maxFps, cover);
   }
 }

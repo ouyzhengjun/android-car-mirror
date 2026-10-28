@@ -32,6 +32,8 @@ public final class DeviceManagerActivity extends Activity {
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
+    // Touching the catalog or connecting needs the process-scoped session to exist.
+    ConnectionOwner.get(this);
     SavedDevices.seed(this);
     setContentView(buildUi());
     usb = new UsbDeviceRepository(this);
