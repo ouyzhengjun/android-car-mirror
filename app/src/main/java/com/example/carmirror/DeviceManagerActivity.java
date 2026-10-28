@@ -213,6 +213,11 @@ public final class DeviceManagerActivity extends Activity {
   private void renderDetail() {
     detail.removeAllViews();
     String active = selectedId != null ? selectedId : ConnectionOwner.catalog().selectedId();
+    // Entering the page with no live selection should still show something useful.
+    if (active == null && !ConnectionOwner.catalog().entries().isEmpty()) {
+      active = ConnectionOwner.catalog().entries().get(0).id;
+      selectedId = active;
+    }
     DeviceEntry entry = null;
     for (DeviceEntry e : ConnectionOwner.catalog().entries()) if (e.id.equals(active)) entry = e;
     if (entry == null) {
@@ -289,12 +294,21 @@ public final class DeviceManagerActivity extends Activity {
     detail.addView(actions);
 
     if (entry.tcp != null) {
-      TextView remove = Ui.textButton(this, "删除此设备", v -> {
-        SavedDevices.remove(this, target.tcp);
-        if (target.tcp.serial().equals(DemoTarget.preferredSerial(this))) DemoTarget.clear(this);
-        selectedId = null;
-        render();
-      });
+      TextView remove = Ui.textButton(this, "删除此设备", v ->
+          new android.app.AlertDialog.Builder(this,
+              android.R.style.Theme_Material_Dialog_Alert)
+              .setTitle("删除此设备？")
+              .setMessage(target.tcp.serial() + " 的保存记录与投屏设置会被移除。")
+              .setNegativeButton("取消", null)
+              .setPositiveButton("删除", (d, w) -> {
+                SavedDevices.remove(this, target.tcp);
+                if (target.tcp.serial().equals(DemoTarget.preferredSerial(this))) {
+                  DemoTarget.clear(this);
+                }
+                selectedId = null;
+                render();
+              })
+              .show());
       LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(
           LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
       rp.topMargin = Ui.dp(this, 12);

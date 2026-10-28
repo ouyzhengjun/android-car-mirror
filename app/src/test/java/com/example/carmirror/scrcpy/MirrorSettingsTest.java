@@ -27,6 +27,22 @@ public class MirrorSettingsTest {
     rejected(() -> settings(MirrorSettings.Region.CUSTOM,new CropRect(2,2,Integer.MAX_VALUE,0)).resolve(5120,1600));
     rejected(() -> settings(MirrorSettings.Region.CUSTOM,null).resolve(5120,1600));
   }
+  @Test public void nativeSizeFollowsTheDetectedDisplay() {
+    MirrorSettings single = new MirrorSettings(MirrorSettings.Region.FULL, 0, 2560, 8000000, 30,
+        null, true);
+    assertEquals(1920, single.resolve(1920, 1080).maxSize);
+    assertEquals(2560, single.resolve(2560, 1440).maxSize);
+    // A size that is not a multiple of 16 is rounded up so scrcpy never downscales it.
+    assertEquals(1376, single.resolve(1366, 768).maxSize);
+    assertEquals(5120, single.resolve(5120, 1600).maxSize);
+    // Unknown dimensions fall back to the stored cap.
+    assertEquals(2560, single.resolve(0, 0).maxSize);
+  }
+  @Test public void explicitCapOverridesNativeSize() {
+    MirrorSettings custom = new MirrorSettings(MirrorSettings.Region.FULL, 0, 1280, 8000000, 30,
+        null, false);
+    assertEquals(1280, custom.resolve(1920, 1080).maxSize);
+  }
   @Test public void validatesNumericSettingsAndAllowsBoundaries() {
     int[][] invalid={{-1,2560,8000000,30},{256,2560,8000000,30},{0,255,8000000,30},{0,272+1,8000000,30},{0,8208,8000000,30},{0,2560,999999,30},{0,2560,50000001,30},{0,2560,8000000,0},{0,2560,8000000,61}};
     for(int[] v:invalid) rejected(() -> new MirrorSettings(MirrorSettings.Region.FULL,v[0],v[1],v[2],v[3],null));

@@ -30,6 +30,11 @@ public final class MirrorSettingsStore {
         + (entry.usb.serialNumber == null ? "type" : entry.usb.serialNumber);
   }
 
+  /** True when this device has an explicit single/dual choice; otherwise it is auto-detected. */
+  public boolean hasDual(DeviceEntry entry) {
+    return prefs.contains(key(entry) + "dual");
+  }
+
   public MirrorSettings load(DeviceEntry entry) {
     String key = key(entry);
     int region = prefs.getInt(key + "region", -1);
@@ -55,15 +60,17 @@ public final class MirrorSettingsStore {
       crop = null;
     }
     try {
-      return new MirrorSettings(selected, value[0], value[1], value[2] * 1000000, value[3], crop);
+      boolean nativeSize = prefs.getBoolean(key(entry) + "native", true);
+      return new MirrorSettings(selected, value[0], value[1], value[2] * 1000000, value[3], crop,
+          nativeSize);
     } catch (IllegalArgumentException e) {
       return defaultSettings();
     }
   }
 
-  /** Single-screen default: the whole display, no split. */
+  /** Single-screen default: whole display, encoded at the head unit's own resolution. */
   public static MirrorSettings defaultSettings() {
-    return new MirrorSettings(MirrorSettings.Region.FULL, 0, 2560, 8000000, 30, null);
+    return new MirrorSettings(MirrorSettings.Region.FULL, 0, 2560, 8000000, 30, null, true);
   }
 
   /** True when this device was explicitly configured as a joined dual-screen panel. */
@@ -87,6 +94,7 @@ public final class MirrorSettingsStore {
     edit.putString(key + "h", String.valueOf(crop == null ? 1600 : crop.height));
     edit.putString(key + "x", String.valueOf(crop == null ? 0 : crop.x));
     edit.putString(key + "y", String.valueOf(crop == null ? 0 : crop.y));
+    edit.putBoolean(key + "native", settings.nativeSize);
     edit.apply();
   }
 }

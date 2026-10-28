@@ -670,10 +670,22 @@
           </div>
         </div>
         <div class="col">
-          <p class="sec-label" style="margin-top:4px">画质</p>
+          <p class="sec-label" style="margin-top:4px">分辨率</p>
+          <div class="seg" style="margin-bottom:10px">
+            <div class="opt on" style="padding:14px 12px">
+              <span class="lbl">跟随车机分辨率</span>
+              <span style="font-size:13px;color:var(--on-surface-var)">按实测屏幕尺寸原样投屏</span>
+            </div>
+            <div class="opt" style="padding:14px 12px">
+              <span class="lbl">自定义最长边</span>
+              <span style="font-size:13px;color:var(--on-surface-var)">手动限制编码的最长边</span>
+            </div>
+          </div>
+          <p style="font-size:14px;color:var(--on-surface-var);margin:0 0 6px 4px">已检测：1920 × 1080，按此尺寸编码</p>
+          <p class="sec-label">画质</p>
           <div class="grid2">
-            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">最长边</div>
-              <div class="field"><div class="fv">2560</div></div></div>
+            <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">最长边（自定义时生效）</div>
+              <div class="field" style="opacity:.45"><div class="fv">2560</div></div></div>
             <div><div style="font-size:14px;color:var(--on-surface-var);margin-bottom:8px">视频码率</div>
               <div class="field"><div class="fv">8 Mbps</div></div></div>
           </div>
@@ -699,7 +711,7 @@
       </div>
     </div>
   </div></div></div>
-  <p class="shot-note">先选屏幕类型：单屏只给「全屏 / 自定义」，双联屏才出现「仅主屏 / 仅副屏」；其余照旧。</p>
+  <p class="shot-note">先选屏幕类型（单屏只给「全屏 / 自定义」），再选分辨率（默认跟随车机实测尺寸）；「最长边」只在自定义时可用。</p>
 </div>
 
 </div>
@@ -730,7 +742,14 @@
   <li>判断依据可参考 <code>DisplayLayout.looksDual</code>：宽高比 ≥ 2.8（T26FL 为 5120 × 1600 = 3.2）才像双联屏；仅作默认建议，最终以用户选择为准。</li>
 </ul>
 
-<h3>4. 全应用横屏</h3>
+<h3>4. 分辨率跟随车机</h3>
+<ul>
+  <li>连上设备后自动读取 <code>wm size</code>，默认按车机实际分辨率编码（<b>跟随车机分辨率</b>），不再固定 2560。</li>
+  <li>实现上把 max_size 设为「最长边向上取 16 的倍数」，scrcpy 只在超过该值时才缩放，因此单屏车机输出就是原分辨率，没有二次缩放。</li>
+  <li>需要压带宽时切到「自定义最长边」手动限制；单屏默认整屏投放，不裁不放大。</li>
+</ul>
+
+<h3>5. 全应用横屏</h3>
 <ul>
   <li>不只是投屏页：首页、演示模式、设置、设备管理、无线连接、投屏设置全部按 <b>1536 × 1024 dp 横屏</b>排版，Manifest 里统一锁 <code>SCREEN_ORIENTATION_LANDSCAPE</code>。</li>
   <li>投屏页旋转过程中不重启会话（沿用现有 <code>configChanges</code> 处理）。</li>

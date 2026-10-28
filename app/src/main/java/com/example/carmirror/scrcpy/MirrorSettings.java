@@ -8,8 +8,15 @@ public final class MirrorSettings {
   public final Region region;
   public final int displayId, maxSize, bitRate, maxFps;
   public final CropRect customCrop;
+  /** True when the encoder should use the head unit's own resolution instead of maxSize. */
+  public final boolean nativeSize;
 
   public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps, CropRect customCrop) {
+    this(region, displayId, maxSize, bitRate, maxFps, customCrop, false);
+  }
+
+  public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps,
+      CropRect customCrop, boolean nativeSize) {
     this.region = Objects.requireNonNull(region);
     new MirrorOptions(displayId, customCrop, maxSize, bitRate, maxFps);
     this.displayId = displayId;
@@ -17,6 +24,14 @@ public final class MirrorSettings {
     this.bitRate = bitRate;
     this.maxFps = maxFps;
     this.customCrop = customCrop;
+    this.nativeSize = nativeSize;
+  }
+
+  /** scrcpy only downscales when the longest side exceeds max_size, so round up to 16 and stop. */
+  static int capFor(int displayWidth, int displayHeight) {
+    int longest = Math.max(displayWidth, displayHeight);
+    int rounded = Math.min(8192, (longest + 15) / 16 * 16);
+    return Math.max(256, rounded);
   }
 
   public static MirrorSettings defaultForDisplay(int width, int height) {
@@ -37,6 +52,9 @@ public final class MirrorSettings {
       crop = customCrop;
     }
     if (crop != null) crop.validateWithin(displayWidth, displayHeight);
-    return new MirrorOptions(displayId, crop, maxSize, bitRate, maxFps);
+    int cap = nativeSize && displayWidth > 0 && displayHeight > 0
+        ? capFor(displayWidth, displayHeight)
+        : maxSize;
+    return new MirrorOptions(displayId, crop, cap, bitRate, maxFps);
   }
 }

@@ -28,22 +28,36 @@ public final class MirrorSettingsActivity extends Activity {
   private boolean dual;
   private final View[] regionOptions = new View[4];
   private TextView singleLabel, dualLabel;
+  private boolean nativeSize = true;
+  private TextView nativeLabel, customSizeLabel, detected;
+  private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
+  private final java.util.concurrent.ExecutorService worker =
+      java.util.concurrent.Executors.newSingleThreadExecutor();
   private EditText display, max, rate, fps, width, height, x, y;
   private TextView previewNote;
   private final TextView[] options = new TextView[4];
   private CropPreview preview;
+
+  @Override protected void onDestroy() {
+    handler.removeCallbacksAndMessages(null);
+    worker.shutdownNow();
+    super.onDestroy();
+  }
 
   @Override public void onCreate(Bundle state) {
     super.onCreate(state);
     store = new MirrorSettingsStore(this);
     SavedDevices.seed(this);
     final DeviceEntry entry = ConnectionOwner.catalog().selected();
-    dual = store.dual(entry);
+    dual = store.hasDual(entry) ? store.dual(entry) : false;
     MirrorSettings settings = store.load(entry);
+    nativeSize = settings.nativeSize;
     region = settings.region.ordinal();
     if (!dual && region > 0 && region < 3) region = 0;
     setContentView(buildUi(settings));
+    renderSizeMode();
     refreshPreview();
+    detectDisplay(entry);
   }
 
   private View buildUi(MirrorSettings settings) {
@@ -139,10 +153,24 @@ public final class MirrorSettingsActivity extends Activity {
     rp.leftMargin = Ui.dp(this, 40);
     columns.addView(right, rp);
 
+    right.addView(sectionLabel("分辨率"));
+    LinearLayout sizeModes = Ui.row(this);
+    sizeModes.addView(sizeMode(true));
+    LinearLayout.LayoutParams smp = new LinearLayout.LayoutParams(0,
+        LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+    smp.leftMargin = Ui.dp(this, 14);
+    sizeModes.addView(sizeMode(false), smp);
+    right.addView(sizeModes);
+    detected = Ui.text(this, "正在读取车机分辨率…", 14, Ui.ON_VAR);
+    LinearLayout.LayoutParams dp = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    dp.topMargin = Ui.dp(this, 10);
+    right.addView(detected, dp);
+
     right.addView(sectionLabel("画质"));
     LinearLayout qualityRow = Ui.row(this);
     display = number(right, qualityRow, "显示器 ID", settings.displayId);
-    max = number(right, qualityRow, "最长边", settings.maxSize);
+    max = number(right, qualityRow, "最长边（自定义时生效）", settings.maxSize);
     right.addView(qualityRow);
     LinearLayout rateRow = Ui.row(this);
     rate = number(right, rateRow, "视频码率（Mbps）", settings.bitRate / 1000000);
@@ -250,6 +278,80 @@ public final class MirrorSettingsActivity extends Activity {
     }
   }
 
+  /** 「跟随车机」把编码尺寸交给实测分辨率，避免人为缩放。 */
+  private View sizeMode(final boolean nativeMode) {
+    LinearLayout option = Ui.column(this);
+    option.setGravity(Gravity.CENTER);
+    option.setPadding(Ui.dp(this, 12), Ui.dp(this, 14), Ui.dp(this, 12), Ui.dp(this, 14));
+    TextView title = Ui.text(this, nativeMode ? "跟随车机分辨率" : "自定义最长边", 16, Ui.ON_VAR);
+    title.setGravity(Gravity.CENTER);
+    option.addView(title);
+    TextView hint = Ui.text(this, nativeMode ? "按实测屏幕尺寸原样投屏" : "手动限制编码的最长边", 13,
+        Ui.ON_VAR);
+    hint.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    hp.topMargin = Ui.dp(this, 5);
+    option.addView(hint, hp);
+    option.setClickable(true);
+    option.setFocusable(true);
+    if (nativeMode) nativeLabel = title; else customSizeLabel = title;
+    option.setOnClickListener(v -> {
+      nativeSize = nativeMode;
+      renderSizeMode();
+    });
+    return option;
+  }
+
+  private void renderSizeMode() {
+    if (nativeLabel == null) return;
+    nativeLabel.setTextColor(nativeSize ? Ui.PRIMARY : Ui.ON_VAR);
+    customSizeLabel.setTextColor(nativeSize ? Ui.ON_VAR : Ui.PRIMARY);
+    nativeLabel.setTypeface(nativeLabel.getTypeface(),
+        nativeSize ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    customSizeLabel.setTypeface(customSizeLabel.getTypeface(),
+        nativeSize ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
+    ((View) nativeLabel.getParent()).setBackground(nativeSize
+        ? Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this)
+        : Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this));
+    ((View) customSizeLabel.getParent()).setBackground(nativeSize
+        ? Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this)
+        : Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this));
+    max.setEnabled(!nativeSize);
+    max.setAlpha(nativeSize ? 0.45f : 1f);
+  }
+
+  /** Reads the real display size so both the resolution mode and the screen type can follow it. */
+  private void detectDisplay(final DeviceEntry entry) {
+    if (!ConnectionOwner.isConnected()) {
+      detected.setText("未连接，无法读取车机分辨率");
+      return;
+    }
+    worker.execute(() -> {
+      String text;
+      int[] size = {0, 0};
+      try {
+        com.example.carmirror.adb.CommandResult result =
+            ConnectionOwner.get(this).shell("wm size", 5000);
+        size = DisplaySize.parse(result.output());
+        text = size[0] > 0 ? "已检测：" + size[0] + " × " + size[1]
+            + (nativeSize ? "，按此尺寸编码" : "") : "读取失败，请手动设置最长边";
+      } catch (Exception e) {
+        text = "读取失败，请手动设置最长边";
+      }
+      final String label = text;
+      final int[] detectedSize = size;
+      handler.post(() -> {
+        if (isFinishing()) return;
+        detected.setText(label);
+        if (!store.hasDual(entry) && detectedSize[0] > 0) {
+          dual = DisplayLayout.looksDual(detectedSize[0], detectedSize[1]);
+          refreshPreview();
+        }
+      });
+    });
+  }
+
   private String summarize(MirrorSettings settings) {
     String region;
     switch (settings.region) {
@@ -262,12 +364,15 @@ public final class MirrorSettingsActivity extends Activity {
   }
 
   private MirrorSettings collect() {
+    int maxValue = nativeSize ? safeNumber(max, 2560) : number(max, 256, 8192);
+    maxValue = Math.max(256, Math.min(8192, (maxValue + 15) / 16 * 16));
     return new MirrorSettings(MirrorSettings.Region.values()[region], number(display, 0, 255),
-        number(max, 256, 8192), number(rate, 1, 50) * 1000000, number(fps, 1, 60),
+        maxValue, number(rate, 1, 50) * 1000000, number(fps, 1, 60),
         region == MirrorSettings.Region.CUSTOM.ordinal()
             ? new CropRect(number(width, 2, CAR_WIDTH), number(height, 2, CAR_HEIGHT),
                 number(x, 0, CAR_WIDTH), number(y, 0, CAR_HEIGHT))
-            : null);
+            : null,
+        nativeSize);
   }
 
   private int number(EditText field, int min, int max) {
