@@ -46,6 +46,8 @@ public final class DemoActivity extends Activity {
   private String failure = "";
   private String waitingHint = "插上 OTG 线就会自动开始投屏，不需要再点任何按钮。";
   private long retryAt;
+  private UsbCandidate waitingPermission;
+  private boolean focusRequested;
 
   private LinearLayout copy;
   private FrameLayout visual;
@@ -201,6 +203,18 @@ public final class DemoActivity extends Activity {
     }
 
     LinearLayout buttons = Ui.row(this);
+    if (waitingPermission != null) {
+      final UsbCandidate candidate = waitingPermission;
+      TextView allow = Ui.button(this, "允许 USB 访问", true, v -> {
+        waitingHint = "正在等待系统授权框…";
+        render();
+        requestUsbPermission();
+      });
+      LinearLayout.LayoutParams allowParams = new LinearLayout.LayoutParams(
+          LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+      allowParams.rightMargin = Ui.dp(this, 18);
+      buttons.addView(allow, allowParams);
+    }
     TextView retry = Ui.button(this, "重试", false, v -> {
       paused = false;
       evaluate(true);
@@ -375,19 +389,41 @@ public final class DemoActivity extends Activity {
   private void connectUsb(final UsbCandidate candidate) {
     targetLabel = "USB " + candidate.toString();
     phase = WAITING;
-    waitingHint = "请在平板上允许 USB 设备访问：" + candidate;
+    waitingPermission = candidate;
+    waitingHint = "需要在平板上允许 USB 设备访问，授权后会自动投屏。";
     render();
-    // Already-granted devices call back immediately, so no separate permission probe is needed.
+    requestUsbPermission();
+  }
+
+  /**
+   * Asks the system for USB access. The prompt is a system dialog, so it only shows while this
+   * activity owns the window; the waiting screen also exposes an explicit button in case the
+   * first request was made before the window had focus.
+   */
+  private void requestUsbPermission() {
+    final UsbCandidate candidate = waitingPermission;
+    if (candidate == null || isFinishing() || usbRepository == null) return;
+    MirrorLog.info("请求系统 USB 授权：" + candidate);
     usbRepository.requestPermission(candidate, (device, granted) -> runOnUiThread(() -> {
       if (isFinishing()) return;
       if (!granted) {
-        failure = "系统 USB 授权被拒绝或设备已拔出";
-        phase = FAILED;
-        render();
+        waitingPermission = null;
+        fail("系统 USB 授权被拒绝或设备已拔出");
         return;
       }
+      waitingPermission = null;
       openUsb(device);
     }));
+  }
+
+  @Override public void onWindowFocusChanged(boolean focus) {
+    super.onWindowFocusChanged(focus);
+    // A request issued before the window had focus may be dropped by the system; retry once.
+    if (focus && !focusRequested && waitingPermission != null && phase == WAITING && !paused) {
+      focusRequested = true;
+      requestUsbPermission();
+    }
+    if (!focus) focusRequested = false;
   }
 
   private void openUsb(final UsbCandidate candidate) {
@@ -471,6 +507,7 @@ public final class DemoActivity extends Activity {
   }
 
   private void fail(String reason) {
+    waitingPermission = null;
     failure = reason == null || reason.trim().isEmpty() ? "未知错误" : reason;
     MirrorLog.failure("演示模式：" + failure);
     phase = FAILED;

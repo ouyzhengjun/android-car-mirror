@@ -24,7 +24,10 @@ import com.example.carmirror.ui.*;
 public final class MirrorSettingsActivity extends Activity {
   private static final int CAR_WIDTH = 5120, CAR_HEIGHT = 1600;
   private MirrorSettingsStore store;
-  private int region = 1;
+  private int region = 0;
+  private boolean dual;
+  private final View[] regionOptions = new View[4];
+  private TextView singleLabel, dualLabel;
   private EditText display, max, rate, fps, width, height, x, y;
   private TextView previewNote;
   private final TextView[] options = new TextView[4];
@@ -35,8 +38,10 @@ public final class MirrorSettingsActivity extends Activity {
     store = new MirrorSettingsStore(this);
     SavedDevices.seed(this);
     final DeviceEntry entry = ConnectionOwner.catalog().selected();
+    dual = store.dual(entry);
     MirrorSettings settings = store.load(entry);
     region = settings.region.ordinal();
+    if (!dual && region > 0 && region < 3) region = 0;
     setContentView(buildUi(settings));
     refreshPreview();
   }
@@ -72,6 +77,15 @@ public final class MirrorSettingsActivity extends Activity {
     LinearLayout left = Ui.column(this);
     columns.addView(left, Ui.lp(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
 
+    left.addView(sectionLabel("屏幕类型"));
+    LinearLayout layouts = Ui.row(this);
+    layouts.addView(layoutOption(true));
+    LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0,
+        LinearLayout.LayoutParams.WRAP_CONTENT, 1);
+    lp2.leftMargin = Ui.dp(this, 14);
+    layouts.addView(layoutOption(false), lp2);
+    left.addView(layouts);
+
     left.addView(sectionLabel("投屏区域"));
     LinearLayout segmented = Ui.row(this);
     String[] labels = {"全屏", "仅主屏（左）", "仅副屏（右）", "自定义"};
@@ -97,6 +111,7 @@ public final class MirrorSettingsActivity extends Activity {
         refreshPreview();
       });
       options[i] = label;
+      regionOptions[i] = option;
       LinearLayout.LayoutParams op = new LinearLayout.LayoutParams(0,
           LinearLayout.LayoutParams.WRAP_CONTENT, 1);
       op.rightMargin = i < labels.length - 1 ? Ui.dp(this, 14) : 0;
@@ -171,6 +186,7 @@ public final class MirrorSettingsActivity extends Activity {
     TextView save = Ui.button(this, "保存到这台设备", true, v -> {
       try {
         MirrorSettings next = collect();
+        store.dual(ConnectionOwner.catalog().selected(), dual);
         store.save(ConnectionOwner.catalog().selected(), next);
         MirrorLog.info("已保存投屏设置：" + summarize(next));
         error.setText("已保存");
@@ -184,6 +200,52 @@ public final class MirrorSettingsActivity extends Activity {
         LinearLayout.LayoutParams.MATCH_PARENT, Ui.dp(this, 68)));
     right.addView(save);
     return root;
+  }
+
+  /** Two big choices; the split regions only exist on a joined panel. */
+  private View layoutOption(final boolean single) {
+    LinearLayout option = Ui.column(this);
+    option.setGravity(Gravity.CENTER);
+    option.setPadding(Ui.dp(this, 14), Ui.dp(this, 16), Ui.dp(this, 14), Ui.dp(this, 16));
+    TextView title = Ui.text(this, single ? "单屏（整屏投放）" : "双联屏（左右各半）", 17, Ui.ON_VAR);
+    title.setGravity(Gravity.CENTER);
+    option.addView(title);
+    TextView hint = Ui.text(this, single ? "一台屏幕，整幅画面" : "左右两块屏，需要选主屏或副屏", 13,
+        Ui.ON_VAR);
+    hint.setGravity(Gravity.CENTER);
+    LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+    hp.topMargin = Ui.dp(this, 6);
+    option.addView(hint, hp);
+    option.setClickable(true);
+    option.setFocusable(true);
+    if (single) singleLabel = title; else dualLabel = title;
+    option.setOnClickListener(v -> {
+      dual = !single;
+      if (!dual && region > 0 && region < 3) region = 0;
+      refreshPreview();
+    });
+    return option;
+  }
+
+  private void renderLayoutChoice() {
+    if (singleLabel == null) return;
+    singleLabel.setTextColor(dual ? Ui.ON_VAR : Ui.PRIMARY);
+    dualLabel.setTextColor(dual ? Ui.PRIMARY : Ui.ON_VAR);
+    singleLabel.setTypeface(singleLabel.getTypeface(),
+        dual ? android.graphics.Typeface.NORMAL : android.graphics.Typeface.BOLD);
+    dualLabel.setTypeface(dualLabel.getTypeface(),
+        dual ? android.graphics.Typeface.BOLD : android.graphics.Typeface.NORMAL);
+    View single = (View) singleLabel.getParent();
+    View dualView = (View) dualLabel.getParent();
+    single.setBackground(dual ? Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this)
+        : Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this));
+    dualView.setBackground(dual ? Ui.outline(Ui.SELECTED, Ui.PRIMARY, 18, this)
+        : Ui.outline(Ui.SURFACE_C, Ui.OUTLINE_V, 18, this));
+    // Split regions would crop half the picture away on a single-screen unit.
+    for (int i = 1; i <= 2; i++) {
+      if (regionOptions[i] != null) regionOptions[i].setVisibility(dual ? View.VISIBLE : View.GONE);
+    }
   }
 
   private String summarize(MirrorSettings settings) {
@@ -244,6 +306,7 @@ public final class MirrorSettingsActivity extends Activity {
   }
 
   private void refreshPreview() {
+    renderLayoutChoice();
     for (int i = 0; i < options.length; i++) {
       boolean on = i == region;
       options[i].setTextColor(on ? Ui.PRIMARY : Ui.ON_VAR);
@@ -277,6 +340,7 @@ public final class MirrorSettingsActivity extends Activity {
 
   /** Explains how much of the chosen region will be cropped to fill a 1536 x 1024 dp screen. */
   private String cropSummary() {
+    if (!dual) return "单屏车机整幅投放，不裁切，也不放大";
     float regionWidth, regionHeight;
     switch (MirrorSettings.Region.values()[region]) {
       case MAIN:

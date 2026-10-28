@@ -639,11 +639,22 @@
     <div class="body">
       <div class="cols">
         <div class="col">
-          <p class="sec-label" style="margin-top:4px">投屏区域</p>
+          <p class="sec-label" style="margin-top:4px">屏幕类型</p>
+          <div class="seg" style="margin-bottom:18px">
+            <div class="opt on" style="padding:16px 12px">
+              <span class="lbl">单屏（整屏投放）</span>
+              <span style="font-size:13px;color:var(--on-surface-var)">一台屏幕，整幅画面</span>
+            </div>
+            <div class="opt" style="padding:16px 12px">
+              <span class="lbl">双联屏（左右各半）</span>
+              <span style="font-size:13px;color:var(--on-surface-var)">左右两块屏，需选主或副屏</span>
+            </div>
+          </div>
+          <p class="sec-label">投屏区域</p>
           <div class="seg">
             <div class="opt on"><div class="diagram"><i style="flex:1"></i><i style="flex:1"></i></div><span class="lbl">全屏</span></div>
-            <div class="opt"><div class="diagram"><i style="flex:1"></i><i style="flex:1;background:#151319"></i></div><span class="lbl">仅主屏（左）</span></div>
-            <div class="opt"><div class="diagram"><i style="flex:1;background:#151319"></i><i style="flex:1"></i></div><span class="lbl">仅副屏（右）</span></div>
+            <div class="opt" style="display:none"><div class="diagram"><i style="flex:1"></i><i style="flex:1;background:#151319"></i></div><span class="lbl">仅主屏（左）</span></div>
+            <div class="opt" style="display:none"><div class="diagram"><i style="flex:1;background:#151319"></i><i style="flex:1"></i></div><span class="lbl">仅副屏（右）</span></div>
             <div class="opt"><div class="diagram" style="align-items:center;justify-content:center;color:var(--on-surface-var);font-size:13px">自定义</div><span class="lbl">自定义</span></div>
           </div>
           <p style="font-size:14px;color:var(--on-surface-var);margin:14px 4px 0">
@@ -688,7 +699,7 @@
       </div>
     </div>
   </div></div></div>
-  <p class="shot-note">左栏选区域并看裁切预览，右栏调画质并保存；横屏不再需要上下滚动。</p>
+  <p class="shot-note">先选屏幕类型：单屏只给「全屏 / 自定义」，双联屏才出现「仅主屏 / 仅副屏」；其余照旧。</p>
 </div>
 
 </div>
@@ -711,7 +722,15 @@
   <li>代价是裁切，且比例差越大裁得越多：仅主屏（2560 × 1600 = 1.6:1）对 1.5:1 的横屏只裁约 6% 宽度；全屏（5120 × 1600 = 3.2:1）要裁掉约 53% 宽度。所以<b>建议演示默认用「仅主屏（左）」</b>，并在投屏设置里对比例差过大的选择给出提示。</li>
 </ul>
 
-<h3>3. 全应用横屏</h3>
+<h3>3. 单屏车机不能被切半</h3>
+<ul>
+  <li>投屏设置新增<b>屏幕类型</b>：单屏（整屏投放）或双联屏（左右各半）。<b>默认单屏</b>，整幅画面直接投放，不裁不放大。</li>
+  <li>只有选了双联屏，区域里才出现「仅主屏（左）／仅副屏（右）」；单屏设备即使之前存过主/副屏，读取时也会纠正为全屏。</li>
+  <li>原因：旧逻辑对所有设备都按宽度对半切，单屏车机（如 1920 × 1080）会被裁掉一半再铺满，画面被放大到失真。</li>
+  <li>判断依据可参考 <code>DisplayLayout.looksDual</code>：宽高比 ≥ 2.8（T26FL 为 5120 × 1600 = 3.2）才像双联屏；仅作默认建议，最终以用户选择为准。</li>
+</ul>
+
+<h3>4. 全应用横屏</h3>
 <ul>
   <li>不只是投屏页：首页、演示模式、设置、设备管理、无线连接、投屏设置全部按 <b>1536 × 1024 dp 横屏</b>排版，Manifest 里统一锁 <code>SCREEN_ORIENTATION_LANDSCAPE</code>。</li>
   <li>投屏页旋转过程中不重启会话（沿用现有 <code>configChanges</code> 处理）。</li>
@@ -729,6 +748,7 @@
   <li>两者都不可用时停在「等待 USB 设备接入」，每 3 秒重试一次首选无线目标；失败不弹窗，只在状态行显示原因。</li>
   <li>连上后直接进投屏页，参数取该设备已保存的设置；没有记录时用默认值：仅主屏 / 2560 边 / 8 Mbps / 30 fps。</li>
   <li>仅在应用前台监听；切后台停止，回前台重新检查（与现有实现一致）。</li>
+  <li>USB 首次接入需要系统授权：授权框由系统弹出，只在本应用窗口获得焦点时才可靠。等待页在需要授权时提供「允许 USB 访问」按钮，窗口重获焦点也会自动重试一次。</li>
 </ol>
 
 <h3>状态与反馈</h3>

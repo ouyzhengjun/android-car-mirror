@@ -46,16 +46,33 @@ public final class MirrorSettingsStore {
         region == MirrorSettings.Region.CUSTOM.ordinal()
             ? new CropRect(value[4], value[5], value[6], value[7])
             : null;
+    MirrorSettings.Region selected = MirrorSettings.Region.values()[region];
+    // A split region only exists on a joined panel; on a single-screen unit it would crop half
+    // the picture away and blow the rest up, so fall back to the full display.
+    if (!dual(entry) && (selected == MirrorSettings.Region.MAIN
+        || selected == MirrorSettings.Region.SECONDARY)) {
+      selected = MirrorSettings.Region.FULL;
+      crop = null;
+    }
     try {
-      return new MirrorSettings(MirrorSettings.Region.values()[region], value[0], value[1],
-          value[2] * 1000000, value[3], crop);
+      return new MirrorSettings(selected, value[0], value[1], value[2] * 1000000, value[3], crop);
     } catch (IllegalArgumentException e) {
       return defaultSettings();
     }
   }
 
+  /** Single-screen default: the whole display, no split. */
   public static MirrorSettings defaultSettings() {
-    return new MirrorSettings(MirrorSettings.Region.MAIN, 0, 2560, 8000000, 30, null);
+    return new MirrorSettings(MirrorSettings.Region.FULL, 0, 2560, 8000000, 30, null);
+  }
+
+  /** True when this device was explicitly configured as a joined dual-screen panel. */
+  public boolean dual(DeviceEntry entry) {
+    return prefs.getBoolean(key(entry) + "dual", false);
+  }
+
+  public void dual(DeviceEntry entry, boolean dual) {
+    prefs.edit().putBoolean(key(entry) + "dual", dual).apply();
   }
 
   public void save(DeviceEntry entry, MirrorSettings settings) {
