@@ -208,7 +208,7 @@ public final class DemoActivity extends Activity {
       TextView allow = Ui.button(this, "允许 USB 访问", true, v -> {
         waitingHint = "正在等待系统授权框…";
         render();
-        requestUsbPermission();
+        requestUsbPermission(true);
       });
       LinearLayout.LayoutParams allowParams = new LinearLayout.LayoutParams(
           LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
@@ -392,7 +392,7 @@ public final class DemoActivity extends Activity {
     waitingPermission = candidate;
     waitingHint = "需要在平板上允许 USB 设备访问，授权后会自动投屏。";
     render();
-    requestUsbPermission();
+    requestUsbPermission(false);
   }
 
   /**
@@ -400,12 +400,12 @@ public final class DemoActivity extends Activity {
    * activity owns the window; the waiting screen also exposes an explicit button in case the
    * first request was made before the window had focus.
    */
-  private void requestUsbPermission() {
+  private void requestUsbPermission(boolean retry) {
     final UsbCandidate candidate = waitingPermission;
     if (candidate == null || isFinishing() || usbRepository == null) return;
-    MirrorLog.info("请求系统 USB 授权：" + candidate);
+    MirrorLog.info((retry ? "重新请求系统 USB 授权：" : "请求系统 USB 授权：") + candidate);
     usbRepository.requestPermission(candidate, (device, granted) -> runOnUiThread(() -> {
-      if (isFinishing()) return;
+      if (isFinishing() || waitingPermission == null) return;
       if (!granted) {
         waitingPermission = null;
         fail("系统 USB 授权被拒绝或设备已拔出");
@@ -414,6 +414,7 @@ public final class DemoActivity extends Activity {
       waitingPermission = null;
       openUsb(device);
     }));
+    if (retry) usbRepository.reissuePermission(candidate);
   }
 
   @Override public void onWindowFocusChanged(boolean focus) {
@@ -421,7 +422,7 @@ public final class DemoActivity extends Activity {
     // A request issued before the window had focus may be dropped by the system; retry once.
     if (focus && !focusRequested && waitingPermission != null && phase == WAITING && !paused) {
       focusRequested = true;
-      requestUsbPermission();
+      requestUsbPermission(true);
     }
     if (!focus) focusRequested = false;
   }

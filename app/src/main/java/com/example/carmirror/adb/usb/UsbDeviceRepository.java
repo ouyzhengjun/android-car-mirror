@@ -80,6 +80,22 @@ public final class UsbDeviceRepository implements Closeable {
         List<PermissionCallback> callbacks = pending.remove(c);
         if (callbacks != null) for (PermissionCallback callback : callbacks) callback.onResult(c, granted);
     }
+    /**
+     * Re-issues the system prompt for an already pending request. The system silently drops a
+     * prompt asked for while the app has no focused window, and the pending callbacks would then
+     * wait forever, so the UI needs a way to ask again.
+     */
+    public synchronized void reissuePermission(UsbCandidate c) {
+        if (closed || !scan().contains(c) || backend.hasPermission(c)) return;
+        Log.i(TAG, "re-issuing system USB permission prompt: " + c);
+        try {
+            backend.requestPermission(c);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "permission request failed: " + e);
+            finish(c, false);
+        }
+    }
+
     public synchronized UsbIo open(UsbCandidate c) throws IOException {
         if (closed || !scan().contains(c)) throw new IOException("USB device detached");
         if (!backend.hasPermission(c)) throw new IOException("USB permission not granted");

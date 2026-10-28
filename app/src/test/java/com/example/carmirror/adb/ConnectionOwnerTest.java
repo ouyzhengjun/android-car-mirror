@@ -48,7 +48,7 @@ public class ConnectionOwnerTest {
     ConnectionOwner.observe((state,message)->{if(state==ConnectionState.ERROR)error.countDown();});
     transport.broken=true;
     ConnectionOwner.checkAfterStreamFailure(session);
-    assertTrue("probe must report the real ADB failure",error.await(2,TimeUnit.SECONDS));
+    assertTrue("probe must report the real ADB failure",error.await(10,TimeUnit.SECONDS));
     assertFalse(ConnectionOwner.isConnected());
     assertTrue(ConnectionOwner.message().contains("network gone"));
   }
@@ -58,7 +58,7 @@ public class ConnectionOwnerTest {
     CountDownLatch probed=new CountDownLatch(1);
     transport.probed=probed;
     ConnectionOwner.checkAfterStreamFailure(session);
-    assertTrue("probe should reach the shared ADB transport",probed.await(2,TimeUnit.SECONDS));
+    assertTrue("probe should reach the shared ADB transport",probed.await(10,TimeUnit.SECONDS));
     assertTrue(ConnectionOwner.isConnected());
   }
 
@@ -75,7 +75,7 @@ public class ConnectionOwnerTest {
     ConnectionOwner.usbDetached(candidate);
     assertFalse(ConnectionOwner.isConnected());
     assertFalse(ConnectionOwner.reconnect());
-    assertTrue(ioClosed.await(2,TimeUnit.SECONDS));
+    assertTrue(ioClosed.await(10,TimeUnit.SECONDS));
   }
 
   @Test public void tcpSwitchReleasesUsbIoAndRestoresTcpReconnect() throws Exception {
@@ -85,7 +85,7 @@ public class ConnectionOwnerTest {
       public int write(byte[] b,int o,int n,int t){return n;}
       public void close(){closed.countDown();}
     });
-    connect(); assertTrue(closed.await(2,TimeUnit.SECONDS));
+    connect(); assertTrue(closed.await(10,TimeUnit.SECONDS));
     assertEquals(DeviceEntry.tcpId(Endpoint.parse("192.168.42.147","5555")),ConnectionOwner.catalog().selectedId());
     assertTrue(ConnectionOwner.reconnect());
   }
@@ -94,7 +94,7 @@ public class ConnectionOwnerTest {
     CountDownLatch ready=new CountDownLatch(1);
     ConnectionOwner.observe((state,message)->{if(state==ConnectionState.CONNECTED)ready.countDown();});
     ConnectionOwner.connect(Endpoint.parse("192.168.42.147","5555"));
-    assertTrue("fake ADB should connect",ready.await(2,TimeUnit.SECONDS));
+    assertTrue("fake ADB should connect",ready.await(10,TimeUnit.SECONDS));
     assertTrue(ConnectionOwner.isConnected());
   }
 

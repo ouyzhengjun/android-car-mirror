@@ -38,6 +38,27 @@ public class UsbCandidateTest {
         try { repo.open(backend.devices.get(0)); fail(); } catch (IOException expected) { }
         assertEquals(0, backend.opens);
     }
+    @Test public void pendingPermissionPromptCanBeReissued() throws Exception {
+        FakeBackend backend = new FakeBackend(candidate("a", 1));
+        UsbDeviceRepository repo = new UsbDeviceRepository(backend);
+        List<Boolean> results = new ArrayList<>();
+        // A prompt the system dropped leaves the callbacks pending with no retry path.
+        repo.requestPermission(backend.devices.get(0), (device, granted) -> results.add(granted));
+        repo.requestPermission(backend.devices.get(0), (device, granted) -> results.add(granted));
+        assertEquals(1, backend.prompts);
+        repo.reissuePermission(backend.devices.get(0));
+        assertEquals(2, backend.prompts);
+        backend.permitted = true;
+        repo.permissionResult("a", 1, true);
+        assertEquals(Arrays.asList(true, true), results);
+    }
+    @Test public void reissueDoesNothingOnceGranted() throws Exception {
+        FakeBackend backend = new FakeBackend(candidate("a", 1));
+        backend.permitted = true;
+        UsbDeviceRepository repo = new UsbDeviceRepository(backend);
+        repo.reissuePermission(backend.devices.get(0));
+        assertEquals(0, backend.prompts);
+    }
     @Test public void detachRemovesCandidateClosesResourceAndFailsPendingPermission() throws Exception {
         FakeBackend backend = new FakeBackend(candidate("a", 1));
         backend.permitted = true;
@@ -64,11 +85,11 @@ public class UsbCandidateTest {
     }
     static class FakeBackend implements UsbDeviceRepository.Backend {
         List<UsbCandidate> devices = new ArrayList<>();
-        boolean permitted; int opens; FakeIo io = new FakeIo();
+        boolean permitted; int opens, prompts; FakeIo io = new FakeIo();
         FakeBackend(UsbCandidate candidate) { devices.add(candidate); }
         public List<UsbCandidate> scan() { return new ArrayList<>(devices); }
         public boolean hasPermission(UsbCandidate c) { return permitted; }
-        public void requestPermission(UsbCandidate c) { }
+        public void requestPermission(UsbCandidate c) { prompts++; }
         public UsbIo open(UsbCandidate c) { opens++; return io; }
         public void close() { }
     }
