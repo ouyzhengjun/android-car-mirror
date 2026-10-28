@@ -93,6 +93,21 @@
   .dot.warn{background:var(--warn);box-shadow:0 0 0 5px rgba(255,210,125,.16)}
   .dot.err{background:var(--error);box-shadow:0 0 0 5px rgba(255,180,171,.16)}
 
+  /* 首页：整屏只有两个入口，纵向两张大卡 */
+  .launch{flex:1;display:flex;flex-direction:column;justify-content:center;gap:40px;padding:48px 40px 56px}
+  .lcard{flex:none;height:560px;border-radius:34px;padding:52px 56px;display:flex;align-items:center;
+    gap:44px;position:relative;overflow:hidden}
+  .lcard.primary{background:linear-gradient(150deg,#60489F 0%,#4F378B 54%,#3B2870 100%);color:#E6DFFF}
+  .lcard.plain{background:var(--surface-c);border:1px solid var(--outline-v)}
+  .lcard .lico{width:136px;height:136px;border-radius:36px;display:grid;place-items:center;
+    font-size:62px;line-height:1;flex:none}
+  .lcard.primary .lico{background:rgba(255,255,255,.16)}
+  .lcard.plain .lico{background:var(--surface-chh);color:var(--on-surface)}
+  .lcard .ltxt{min-width:0}
+  .lcard .ltxt h3{font-size:46px;margin:0 0 12px;font-weight:700;letter-spacing:-.01em;color:inherit}
+  .lcard .ltxt p{font-size:21px;margin:0;line-height:1.5;color:inherit;opacity:.82;max-width:560px}
+  .lcard .lgo{margin-left:auto;font-size:44px;opacity:.72;flex:none}
+
   .cards{display:flex;gap:26px;margin-top:34px;flex:none;height:800px}
   .card{flex:1;border-radius:30px;padding:38px;display:flex;flex-direction:column;position:relative;overflow:hidden}
   .card.primary{background:linear-gradient(155deg,#60489F 0%,#4F378B 52%,#3B2870 100%);color:#E6DFFF}
@@ -359,7 +374,7 @@
 <table>
   <thead><tr><th>页面</th><th>职责</th><th>能去哪</th></tr></thead>
   <tbody>
-    <tr><td>首页</td><td>两个入口：演示模式 / 设置；顶部显示当前链路状态</td><td>演示模式、设置</td></tr>
+    <tr><td>首页</td><td>整屏只有两个入口：演示模式 / 设置，不放任何状态或快捷操作</td><td>演示模式、设置</td></tr>
     <tr><td>演示模式</td><td>持续找目标：<b>设置中选中的设备优先</b>，其次等 USB 插入；一旦可用就直接按已保存参数投屏</td><td>投屏页、设置、返回</td></tr>
     <tr><td>投屏页</td><td>只锁横屏、只放画面，铺满无留白、无任何悬浮 UI；从屏幕边缘内滑退出</td><td>退出回演示模式</td></tr>
     <tr><td>设置</td><td>概览：当前设备、四个子页入口、诊断</td><td>设备管理、无线连接、投屏设置</td></tr>
@@ -374,52 +389,26 @@
 
 <!-- 01 首页 -->
 <div class="shot">
-  <div class="shot-h"><span class="idx">01</span><span class="name">首页</span></div>
+  <div class="shot-h"><span class="idx">01</span><span class="name">首页（只有两个入口）</span></div>
   <p class="shot-spec">2560 × 3840 px · 1024 × 1536 dp</p>
   <div class="preview"><div class="device"><div class="dp">
     <div class="statusbar"><span>20:31</span><span>▮▮▮ 100%</span></div>
-    <div class="body">
-      <p class="h1">车机投屏</p>
-      <p class="sub">选一个入口开始</p>
-      <div class="chip-row">
-        <span class="pill"><span class="dot"></span>未连接</span>
-        <span class="pill">USB 调试口 · 未插入</span>
+    <div class="launch">
+      <div class="lcard primary">
+        <div class="lico">▶</div>
+        <div class="ltxt"><h3>演示模式</h3>
+          <p>插上 USB 自动投屏；设置里选中的设备优先。</p></div>
+        <div class="lgo">›</div>
       </div>
-      <div class="cards">
-        <div class="card primary">
-          <div class="ico">▶</div>
-          <h3>演示模式</h3>
-          <p>插入 USB 自动投屏；设置里选中的设备优先。</p>
-          <div class="tags"><span class="tag">全屏</span><span class="tag">30 fps</span><span class="tag">8 Mbps</span></div>
-          <div class="illus"><div class="screen"><i></i><i></i></div></div>
-          <div class="foot">无需操作，插上即投</div>
-          <div class="go">›</div>
-        </div>
-        <div class="card plain">
-          <div class="ico">⚙</div>
-          <h3>设置</h3>
-          <p>管理 ADB 设备、无线连接与投屏参数。</p>
-          <div class="tags"><span class="tag">已保存 1 台</span><span class="tag">USB 候选 1</span></div>
-          <div class="minilist"><b></b><b></b><b></b></div>
-          <div class="foot">上次：192.168.43.160</div>
-          <div class="go">›</div>
-        </div>
+      <div class="lcard plain">
+        <div class="lico">⚙</div>
+        <div class="ltxt"><h3>设置</h3>
+          <p>管理 ADB 设备、无线连接与投屏参数。</p></div>
+        <div class="lgo">›</div>
       </div>
-      <div class="recent">
-        <div class="rico" style="width:58px;height:58px;border-radius:18px;background:var(--surface-chh);
-             display:grid;place-items:center;font-size:24px">⏱</div>
-        <div class="rtext">
-          <div class="rtitle">上次：无线 192.168.43.160:5555</div>
-          <div class="rsub">今天 20:31 · 投屏 12 分钟 · 全屏 · 5120 × 1600</div>
-        </div>
-        <span class="btn tonal sm">一键连接</span>
-      </div>
-      <p style="font-size:14px;color:#8E8A99;margin:18px 6px 0">
-        演示模式只在前台运行；退出投屏后无线连接会保留，USB 需要重新授权。</p>
     </div>
-    <div class="pagefoot">版本 0.2.0 · scrcpy 4.0 · 仅应用前台运行</div>
   </div></div></div>
-  <p class="shot-note">整屏只有两个动作。卡片下半区留白靠标签和底部说明收口，避免「两个空框」。</p>
+  <p class="shot-note">整屏只有这两个入口：没有标题、没有状态胶囊、没有最近使用、没有版本号；链路状态只在设置里看。</p>
 </div>
 
 <!-- 02 演示模式 等待 -->
@@ -776,7 +765,7 @@
 <table>
   <thead><tr><th>状态</th><th>视觉</th><th>可用动作</th></tr></thead>
   <tbody>
-    <tr><td>未连接</td><td>灰点 +「未连接」</td><td>设置、演示模式</td></tr>
+    <tr><td>未连接</td><td>灰点 +「未连接」（仅设置 / 设备管理内显示，首页不显示）</td><td>设置、演示模式</td></tr>
     <tr><td>等 USB</td><td>琥珀点 + 脉冲圆环</td><td>更换首选、打开设置、返回</td></tr>
     <tr><td>连接中</td><td>四步进度，当前步高亮</td><td>取消</td></tr>
     <tr><td>投屏中</td><td>画面铺满，无按钮、无参数条</td><td>边缘内滑退出（首次进入有 3 秒提示）</td></tr>
