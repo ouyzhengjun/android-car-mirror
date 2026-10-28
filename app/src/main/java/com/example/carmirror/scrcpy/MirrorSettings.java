@@ -10,6 +10,8 @@ public final class MirrorSettings {
   public final CropRect customCrop;
   /** True when the encoder should use the head unit's own resolution instead of maxSize. */
   public final boolean nativeSize;
+  /** Display id of the second physical panel, or -1 when both halves live on one panel. */
+  public final int secondaryDisplayId;
 
   public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps, CropRect customCrop) {
     this(region, displayId, maxSize, bitRate, maxFps, customCrop, false);
@@ -17,6 +19,11 @@ public final class MirrorSettings {
 
   public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps,
       CropRect customCrop, boolean nativeSize) {
+    this(region, displayId, maxSize, bitRate, maxFps, customCrop, nativeSize, -1);
+  }
+
+  public MirrorSettings(Region region, int displayId, int maxSize, int bitRate, int maxFps,
+      CropRect customCrop, boolean nativeSize, int secondaryDisplayId) {
     this.region = Objects.requireNonNull(region);
     new MirrorOptions(displayId, customCrop, maxSize, bitRate, maxFps);
     this.displayId = displayId;
@@ -25,6 +32,7 @@ public final class MirrorSettings {
     this.maxFps = maxFps;
     this.customCrop = customCrop;
     this.nativeSize = nativeSize;
+    this.secondaryDisplayId = secondaryDisplayId;
   }
 
   /** scrcpy only downscales when the longest side exceeds max_size, so round up to 16 and stop. */
@@ -41,7 +49,11 @@ public final class MirrorSettings {
 
   public MirrorOptions resolve(int displayWidth, int displayHeight) {
     CropRect crop = null;
-    if (region == Region.MAIN || region == Region.SECONDARY) {
+    int target = displayId;
+    if ((region == Region.MAIN || region == Region.SECONDARY) && secondaryDisplayId >= 0) {
+      // Two real panels: mirror each one whole instead of cropping a joined desktop.
+      target = region == Region.SECONDARY ? secondaryDisplayId : displayId;
+    } else if (region == Region.MAIN || region == Region.SECONDARY) {
       if (displayWidth <= 0 || displayHeight <= 0)
         throw new IllegalArgumentException("Read display dimensions before selecting a crop");
       int half = displayWidth / 2;
@@ -55,6 +67,6 @@ public final class MirrorSettings {
     int cap = nativeSize && displayWidth > 0 && displayHeight > 0
         ? capFor(displayWidth, displayHeight)
         : maxSize;
-    return new MirrorOptions(displayId, crop, cap, bitRate, maxFps);
+    return new MirrorOptions(target, crop, cap, bitRate, maxFps);
   }
 }

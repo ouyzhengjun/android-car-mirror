@@ -30,6 +30,11 @@ public final class MirrorSettingsStore {
         + (entry.usb.serialNumber == null ? "type" : entry.usb.serialNumber);
   }
 
+  /** Second physical panel id detected for this device, or -1 when it has not been probed. */
+  public int secondaryDisplayId(DeviceEntry entry) {
+    return prefs.getInt(key(entry) + "secondary", -1);
+  }
+
   /** True when this device has an explicit single/dual choice; otherwise it is auto-detected. */
   public boolean hasDual(DeviceEntry entry) {
     return prefs.contains(key(entry) + "dual");
@@ -61,8 +66,9 @@ public final class MirrorSettingsStore {
     }
     try {
       boolean nativeSize = prefs.getBoolean(key(entry) + "native", true);
+      int secondary = prefs.getInt(key(entry) + "secondary", -1);
       return new MirrorSettings(selected, value[0], value[1], value[2] * 1000000, value[3], crop,
-          nativeSize);
+          nativeSize, secondary);
     } catch (IllegalArgumentException e) {
       return defaultSettings();
     }
@@ -79,7 +85,7 @@ public final class MirrorSettingsStore {
   }
 
   public void dual(DeviceEntry entry, boolean dual) {
-    prefs.edit().putBoolean(key(entry) + "dual", dual).apply();
+    prefs.edit().putBoolean(key(entry) + "dual", dual).commit();
   }
 
   public void save(DeviceEntry entry, MirrorSettings settings) {
@@ -95,6 +101,7 @@ public final class MirrorSettingsStore {
     edit.putString(key + "x", String.valueOf(crop == null ? 0 : crop.x));
     edit.putString(key + "y", String.valueOf(crop == null ? 0 : crop.y));
     edit.putBoolean(key + "native", settings.nativeSize);
-    edit.apply();
+    edit.putInt(key + "secondary", settings.secondaryDisplayId);
+    edit.commit();
   }
 }

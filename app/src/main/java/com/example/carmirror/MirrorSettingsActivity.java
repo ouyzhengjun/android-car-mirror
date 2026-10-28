@@ -29,6 +29,7 @@ public final class MirrorSettingsActivity extends Activity {
   private final View[] regionOptions = new View[4];
   private TextView singleLabel, dualLabel;
   private boolean nativeSize = true;
+  private int secondaryDisplayId = -1;
   private TextView nativeLabel, customSizeLabel, detected;
   private final android.os.Handler handler = new android.os.Handler(android.os.Looper.getMainLooper());
   private final java.util.concurrent.ExecutorService worker =
@@ -324,32 +325,69 @@ public final class MirrorSettingsActivity extends Activity {
   /** Reads the real display size so both the resolution mode and the screen type can follow it. */
   private void detectDisplay(final DeviceEntry entry) {
     if (!ConnectionOwner.isConnected()) {
-      detected.setText("未连接，无法读取车机分辨率");
+      detected.setText("未连接，无法读取车机显示信息");
       return;
     }
     worker.execute(() -> {
       String text;
       int[] size = {0, 0};
+      boolean separate = false;
+      int secondId = -1;
       try {
-        com.example.carmirror.adb.CommandResult result =
-            ConnectionOwner.get(this).shell("wm size", 5000);
-        size = DisplaySize.parse(result.output());
-        text = size[0] > 0 ? "已检测：" + size[0] + " × " + size[1]
-            + (nativeSize ? "，按此尺寸编码" : "") : "读取失败，请手动设置最长边";
+        com.example.carmirror.adb.AdbSession adb = ConnectionOwner.get(this);
+        size = DisplaySize.parse(adb.shell("wm size", 5000).output());
+        // Only the panel lines matter; the full dump is several pages on a slow IVI.
+        com.example.carmirror.adb.CommandResult dumps =
+            adb.shell("dumpsys display | grep DisplayDeviceInfo", 10000);
+        java.util.List<DisplayProbe.Info> panels =
+            DisplayProbe.physical(DisplayProbe.parse(dumps.output()));
+        MirrorLog.info("显示探测：" + panels.size() + " 块物理屏"
+            + (dumps.timedOut() ? "（命令超时，结果可能不完整）" : ""));
+        if (panels.size() >= 2) {
+          separate = true;
+          secondId = panels.get(1).id;
+          text = "检测到 " + panels.size() + " 块显示屏：" + describe(panels)
+              + "；副屏将使用 " + secondId + " 号屏整屏投放";
+        } else if (panels.size() == 1) {
+          DisplayProbe.Info only = panels.get(0);
+          text = "检测到 1 块显示屏：" + only.width + " × " + only.height
+              + (DisplayProbe.looksLikeJoinedPanel(only.width, only.height)
+                  ? "，比例像联屏（左右各半），请确认"
+                  : "，按单屏投放");
+        } else if (size[0] > 0) {
+          text = "已检测：" + size[0] + " × " + size[1] + "（未能列出显示屏）";
+        } else {
+          text = "读取失败，请手动选择";
+        }
       } catch (Exception e) {
-        text = "读取失败，请手动设置最长边";
+        text = "读取失败，请手动选择";
+        MirrorLog.failure("显示探测失败：" + e);
       }
       final String label = text;
       final int[] detectedSize = size;
+      final boolean hasSecond = separate;
+      final int second = secondId;
       handler.post(() -> {
         if (isFinishing()) return;
+        secondaryDisplayId = hasSecond ? second : -1;
         detected.setText(label);
-        if (!store.hasDual(entry) && detectedSize[0] > 0) {
-          dual = DisplayLayout.looksDual(detectedSize[0], detectedSize[1]);
+        if (!store.hasDual(entry)) {
+          // Two physical panels is proof; a single wide panel is only a hint.
+          dual = hasSecond
+              || (detectedSize[0] > 0 && DisplayProbe.looksLikeJoinedPanel(detectedSize[0], detectedSize[1]));
           refreshPreview();
         }
       });
     });
+  }
+
+  private static String describe(java.util.List<DisplayProbe.Info> panels) {
+    StringBuilder text = new StringBuilder();
+    for (DisplayProbe.Info panel : panels) {
+      if (text.length() > 0) text.append("、");
+      text.append(panel.id).append(" 号 ").append(panel.width).append("×").append(panel.height);
+    }
+    return text.toString();
   }
 
   private String summarize(MirrorSettings settings) {
@@ -372,7 +410,7 @@ public final class MirrorSettingsActivity extends Activity {
             ? new CropRect(number(width, 2, CAR_WIDTH), number(height, 2, CAR_HEIGHT),
                 number(x, 0, CAR_WIDTH), number(y, 0, CAR_HEIGHT))
             : null,
-        nativeSize);
+        nativeSize, secondaryDisplayId);
   }
 
   private int number(EditText field, int min, int max) {

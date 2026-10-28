@@ -46,7 +46,7 @@ public final class SavedDevices {
     serials.add(endpoint.serial());
     p.edit().putString("host", endpoint.host())
         .putString("port", String.valueOf(endpoint.port()))
-        .putStringSet(KEY_SET, serials).apply();
+        .putStringSet(KEY_SET, serials).commit();
     ConnectionOwner.catalog().saveTcp(endpoint);
   }
 
@@ -54,7 +54,7 @@ public final class SavedDevices {
     SharedPreferences p = c.getApplicationContext().getSharedPreferences(FILE, Context.MODE_PRIVATE);
     Set<String> serials = new HashSet<>(p.getStringSet(KEY_SET, Collections.<String>emptySet()));
     if (!serials.remove(endpoint.serial())) return;
-    p.edit().putStringSet(KEY_SET, serials).apply();
+    p.edit().putStringSet(KEY_SET, serials).commit();
     ConnectionOwner.catalog().removeTcp(endpoint.serial());
   }
 }

@@ -31,10 +31,10 @@ public final class DemoTarget {
 
   public static void prefer(Context c, Endpoint endpoint) {
     c.getApplicationContext().getSharedPreferences(FILE, 0).edit()
-        .putString(SERIAL, endpoint == null ? null : endpoint.serial()).apply();
+        .putString(SERIAL, endpoint == null ? null : endpoint.serial()).commit();
   }
 
   public static void clear(Context c) {
-    c.getApplicationContext().getSharedPreferences(FILE, 0).edit().remove(SERIAL).apply();
+    c.getApplicationContext().getSharedPreferences(FILE, 0).edit().remove(SERIAL).commit();
   }
 }
