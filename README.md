@@ -159,4 +159,4 @@ tools/icons/    应用图标生成脚本
 
 ## 许可证
 
-本仓库尚未声明开源许可证。在补充许可证之前，保留所有权利（All rights reserved）。
+本项目以 [Apache License 2.0](LICENSE) 发布，Copyright 2026 Ouyang Zhenjun。仓库内置的第三方组件另按其各自许可证分发，详见[第三方声明](THIRD_PARTY_NOTICES.md)。
