@@ -1,47 +1,98 @@
-# 车机投屏
+# 车机投屏 CarMirror
 
-安装在 Android 平板上的单 APK，支持平板 USB OTG Host 直连车机 ADB，以及手动经典 TCP ADB。应用上传并启动内置 scrcpy 4.0 server，以 H.264 投屏并回传触摸，无需电脑中转、root 或系统悬浮窗权限。USB 端到端真机验收仍待完成，当前证据见[本次验证记录](docs/verification/2026-10-27-t26fl-usb-demo.md)。
+用一台 Android 平板直接投屏并控制车机：通过 **USB OTG** 或**无线 TCP ADB** 连接车机，内置 scrcpy 4.0 server 传输 H.264 画面，并把平板上的触摸、滑动和系统按键反向回传给车机。**不需要电脑中转、root 或系统悬浮窗权限。**
 
-## 连接与使用
+A single-APK Android app that mirrors and controls a car head unit over ADB — USB OTG or classic TCP. It bundles the official scrcpy 4.0 server, decodes H.264 with MediaCodec, and forwards touch and key input back. No PC, root, or overlay permission required.
 
-全应用锁定横屏（3840 × 2560，适配 1536 × 1024 dp）。首页只有两个入口：**演示模式**和**设置**；同一时间只保留一个活动 ADB/投屏会话，切换目标会关闭旧会话。
+> 当前版本 `0.1.0`，处于真机验证阶段。适用范围、已验证项和已知限制见下文。
 
-- **演示模式**：优先连接「设置里设为演示首选的无线设备」，连不上再等 USB 插入并自动连接；连上后按该设备保存的参数直接进入投屏，四步进度（找设备 / 建连接 / 读尺寸 / 启服务）可见。
-- **设置**：双栏概览，左栏当前设备与「设备管理 / 无线连接 / 投屏设置 / 进入演示模式」，右栏诊断（读取显示尺寸、投屏日志、关于）和当前运行信息。
-- **投屏页**：画面按 cover 铺满整屏、不叠加任何控件；从屏幕边缘内滑（系统返回）退出，首次进入有 3 秒一次性提示。
+## 功能特性
 
-### USB OTG 直连
+- **USB OTG 直连**：平板作为 USB Host 连接车机的 ADB 调试口，应用内置 ADB 协议与 RSA 认证实现，不依赖桌面 `adb`。
+- **无线 TCP ADB**：手动输入车机 `IP:端口`，支持保存连接项并复用。
+- **内置 scrcpy 4.0 server**：官方原版二进制，H.264 硬解，低延迟投屏。
+- **触摸反向控制**：点击、长按、滑动、多指，以及返回 / 主页 / 最近任务按键。
+- **单屏与双联屏**：全屏、仅主屏、仅副屏、自定义裁切。
+- **按设备保存参数**：分辨率、码率、帧率、投屏区域按设备记忆。
+- **演示模式**：前台插入 USB 即自动连接并投屏，适合展厅和验收演示。
+- **诊断工具**：`adb shell`、`adb devices` / `connect` / `disconnect`、读取显示尺寸、投屏日志。
 
-1. 在车机开启 USB 调试，准备在车机屏幕确认首次 RSA 调试授权。
-2. 平板须支持 USB Host；用支持数据传输的 OTG 线将平板接到车机实际暴露 USB ADB device 接口的调试口。车机普通 USB Host 口或仅充电线无法用于此连接。平板接开发电脑时通常是 USB device，须换线切换为 Host。
-3. 打开应用，在「ADB 设备」选择 USB 候选，点击「选择设备并连接 / 重试」。应用只识别带 bulk IN/OUT 的 ADB 接口 `0xff/0x42/0x01`。
-4. 在平板允许系统 USB 设备访问，再在车机允许 RSA 调试授权。这是两个独立授权；只有系统 USB 授权并不代表 ADB 已连接。
-5. 状态为已连接后，可执行 `adb shell wm size` 等命令，进入投屏设置并点击「读取显示尺寸」，选定区域和参数，再点击「开始投屏」。授权被拒或连接失败时按状态提示处理后重新选择并重试。
+## 工作原理
 
-### 手动无线 TCP ADB
+```text
+平板 ── USB OTG / TCP ──> 车机 adbd
+  1. 与 adbd 完成 ADB 握手和 RSA 认证
+  2. 推送内置 scrcpy-server 到 /data/local/tmp，
+     以 app_process 启动（目录不可写时回退到共享存储）
+  3. 通过 ADB localabstract 读取 H.264 视频流与控制流
+  4. MediaCodec 解码到 SurfaceView
+  5. 触摸坐标映射后按 scrcpy 控制协议回传
+```
 
-1. 车机须已开启经典 TCP ADB，平板与车机网络互通。输入车机 IPv4 地址与端口，点击「连接」，并在车机允许首次 RSA 授权。T26FL 现场地址为 `192.168.43.160:5555`，请按现场网络修改。
-2. 可点击「保存连接项」，以后选中保存项并点「使用选中连接项」，再手动连接；也可在统一设备列表中选择已保存无线目标并连接。应用不扫描局域网、不自动连接无线目标。
-3. 连接后支持 `adb shell <命令>`、`adb devices`、`adb connect [IP:端口]` 和 `adb disconnect`。投屏步骤与 USB 相同。
+固定使用 scrcpy **v4.0** 的 server 与协议；升级时必须成对替换 server 和客户端协议实现。
 
-若显示 Connection refused，请确认车机 adbd 正在目标 TCP 端口监听；能 ping 通不代表 ADB 可用。本应用不支持配对码式无线调试。
+## 环境要求
 
-### 前台 USB 演示模式
-
-在「模式选择」打开「USB 演示模式（仅应用前台）」。只有一个 USB ADB 候选时会请求授权、连接并自动投屏；多个候选时等待用户选择并连接；没有设备时显示等待 OTG 连接。首次授权仍需人工确认，拒绝或失败可重试。演示只处理 USB。
-
-应用进入后台后停止 USB 演示监听，不从后台拉起投屏；返回前台后重新检查设备。拔线会结束对应会话并恢复等待，重新插入可再次触发演示。投屏中可拖动 × 退出图标；原地按住满 **3 秒**退出并关闭演示模式，避免仍插着线时立即重新投屏。手动退出投屏后 ADB 连接可继续使用。
-
-## 投屏区域和参数
-
-T26FL 的 display 0 是 `5120×1600`，左主屏、右副屏各 `2560×1600`；两半均使用显示器 ID `0`，不要把其他 HDMI/虚拟 display 当成右副屏。首次读取到此尺寸且没有已保存区域时默认仅主屏，其他尺寸默认全屏。
-
-| 区域 | T26FL 原始区域 / server crop |
+| 项目 | 要求 |
 | --- | --- |
-| 全屏 | 完整 `5120×1600`，不传 crop |
-| 仅主屏（左） | `2560:1600:0:0` |
+| 平板 | Android 5.0+（API 21）；USB 方式需支持 USB Host（OTG） |
+| 车机 | Android 5.0+，开启 USB 调试或经典 TCP ADB（通常 5555 端口） |
+| 构建 | JDK 17、Android SDK Platform 34、Build Tools 34.0.0 |
+| 构建工具 | Gradle 8.7（wrapper）、Android Gradle Plugin 8.5.0 |
+
+## 构建与安装
+
+```sh
+./gradlew testDebugUnitTest assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+APK 输出在 `app/build/outputs/apk/debug/app-debug.apk`。首次构建需要联网拉取依赖；依赖已缓存时可加 `--offline`。
+
+不提供正式签名配置，请自行在 `app/build.gradle` 中补充 release signing；当前产物为 debug APK。
+
+## 使用
+
+应用锁定横屏，界面按大屏平板设计。首页只有两个入口：**演示模式**和**设置**；同一时间只保留一个 ADB / 投屏会话，切换目标会关闭旧会话。
+
+### 方式一：USB OTG 直连
+
+1. 在车机开启 USB 调试，准备在车机屏幕确认首次 RSA 授权。
+2. 平板须支持 USB Host，用可传输数据的 OTG 线连接车机**实际提供 ADB device 的调试口**；车机普通 USB Host 口或仅充电线不可用。
+3. 在应用内选择 USB 候选，点击「选择设备并连接」。应用只识别带 bulk IN/OUT 的 ADB 接口 `0xff/0x42/0x01`。
+4. 先在平板允许系统 USB 设备访问，再在车机允许 RSA 调试授权 —— 这是两个独立授权，前者通过不代表 ADB 已连接。
+5. 连接成功后，在「投屏设置」读取显示尺寸、选择区域和参数，再开始投屏。
+
+### 方式二：无线 TCP ADB
+
+1. 车机开启经典 TCP ADB，并保证与平板网络互通；在应用中输入车机 IPv4 地址与端口并连接，在车机允许首次 RSA 授权。
+2. 可保存连接项，下次选中后直接连接。应用**不扫描局域网、不自动连接**无线目标。
+3. 连接后支持 `adb shell <命令>`、`adb devices`、`adb connect`、`adb disconnect`。
+
+提示 `Connection refused` 时，请确认车机 adbd 正在目标端口监听；能 ping 通不代表 ADB 可用。应用不支持 Android 11+ 的配对码式无线调试。
+
+### 演示模式
+
+在「模式选择」打开「USB 演示模式（仅应用前台）」：
+
+- 只有一个 USB 候选时请求授权、连接并自动投屏；多个候选时等待选择；无设备时显示等待 OTG。
+- 应用退到后台即停止监听，不会从后台拉起投屏；返回前台后重新检查设备。
+- 拔线会结束会话，重新插入可再次触发。投屏中可拖动 `×` 图标，**原地按住 3 秒**退出，避免仍插着线时立刻重新投屏。
+
+### 退出投屏
+
+投屏页按 cover 铺满整屏，不叠加任何控件。从屏幕边缘内滑（系统返回）退出，首次进入会有 3 秒一次性提示；演示模式下也可长按 `×` 退出。退出后 ADB 连接可继续使用。
+
+## 投屏区域与参数
+
+分辨率默认**跟随车机实测尺寸**：连接后自动读取 `wm size`，按原分辨率编码，不额外缩放。单屏设备整幅投放；双联屏（如 `5120×1600`，左右各 `2560×1600`）可选择仅主屏 / 仅副屏，画面按铺满显示，比例不一致时只裁不缩。
+
+| 区域 | 说明 / server crop |
+| --- | --- |
+| 全屏 | 完整画面，不传 crop |
+| 仅主屏（左） | 以 `5120×1600` 双联屏为例：`2560:1600:0:0` |
 | 仅副屏（右） | `2560:1600:2560:0` |
-| 自定义 | 输入宽、高、x、y；宽高为正偶数，x/y 非负，区域不得超出原始显示尺寸 |
+| 自定义 | 输入宽、高、x、y；宽高为正偶数，区域不得超出原始显示尺寸 |
 
 | 参数 | 默认 | 范围 |
 | --- | --- | --- |
@@ -50,17 +101,62 @@ T26FL 的 display 0 是 `5120×1600`，左主屏、右副屏各 `2560×1600`；�
 | 视频码率 | 8 Mbps | 1–50 Mbps |
 | 帧率 | 30 | 1–60 |
 
-选定设备后可在「投屏设置」里改参数并保存到该设备。分辨率默认**跟随车机实测尺寸**（连上后自动读取 `wm size`，按原分辨率编码，不额外缩放），需要压带宽时可切「自定义最长边」。先选**屏幕类型**：单屏（默认）整幅投放，不裁不放大；双联屏才出现「仅主屏 / 仅副屏」，且该模式下按铺满显示、比例不一致只裁不缩（仅主屏约裁 6% 宽度，全屏约裁 53%，页面会标出裁切比例）。单屏设备上即使之前存过主/副屏，读取时也会自动纠正为全屏。设置按设备保存；同型号 USB 设备若无可用序列号，可能共享设置，但当前连接选择仍按 USB 路径区分。无法读取尺寸时仅全屏可用。服务端先裁切再编码并负责触控坐标映射，客户端不另加副屏偏移。最长边限制可降低输出分辨率，完整区域不等于原始像素输出；越界裁切会被拒绝。
+参数按设备保存。同型号 USB 设备若无可用序列号，可能共享设置，但连接选择仍按 USB 路径区分。裁切在 server 侧完成，触控坐标也由 server 映射，客户端不额外加副屏偏移。
 
-## 构建和安装
+## 已验证范围
 
-需要 JDK 17、Android SDK Platform 34、Build Tools 34.0.0。Gradle wrapper 8.7，Android Gradle Plugin 8.5.0。
+- **平板（Lenovo TB522FU，API 36）**：安装启动、横屏界面、无线 TCP ADB 全链路（连接、RSA 授权、shell 命令、读取尺寸、server 启动、解码渲染、触控、退出）、按设备持久化设置。
+- **车机（5120×1600 双联屏，API 34）**：无线连接、全屏 / 仅左主屏 / 仅右副屏三种画面、触控落点、长按退出。
+- **平板 USB OTG → 车机调试口**：系统 USB 授权、ADB 握手、server 上传、视频投屏与触控完整链路。
+- **单元测试**：139 个 JVM 测试通过，0 failures。
 
-```sh
-./gradlew testDebugUnitTest assembleDebug --offline
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+尚未验证：API 21–35 实机运行、多台 USB 设备与 hub 选择、自定义裁切边界、缩放与旋转、弱网和断线重连。
+
+详细记录：
+
+- [USB 演示与双联屏真机验证（2026-10-27）](docs/verification/2026-10-27-t26fl-usb-demo.md)
+- [无线连接真机验证（2026-10-20）](docs/verification/2026-10-20-device-check.md)
+- [原始设计规格](docs/superpowers/specs/2026-10-20-android-car-mirror-design.md)
+- [双联屏与 USB 演示设计](docs/superpowers/specs/2026-10-27-usb-demo-dual-screen-design.md)
+
+## 已知限制
+
+- 不提供音频、录屏、文件管理、后台常驻服务或开机自启。
+- 不支持配对码式无线调试，仅支持经典 TCP ADB。
+- 首次连接必须在车机上人工确认 RSA 授权；车机需已开启 adbd。
+- 仅面向大屏横屏设计，手机竖屏体验未优化。
+- `minSdk 21` 只代表可以安装，API 21–35 的实际兼容性仍待验证。
+
+## 安全说明
+
+- ADB 私钥在应用私有目录生成并保存，不写入日志。
+- 只连接用户手动输入的地址，不扫描局域网、不自动连接未知设备。
+- 不使用 root，不请求系统悬浮窗权限。
+- 车机 adbd 是高权限调试接口，请仅在受信任网络中使用，不要暴露到公网。
+
+## 项目结构
+
+```text
+app/src/main/java/com/example/carmirror/
+├── adb/        ADB 协议、RSA 密钥、USB OTG 传输
+├── scrcpy/     server 启动、视频解析、控制消息、触摸映射
+└── ui/         主页、设置、设备管理、演示模式、显示探测
+app/src/test/   139 个 JVM 单元测试
+docs/           设计规格、UI 稿、真机验证记录
+tools/icons/    应用图标生成脚本
 ```
 
-APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。最低 Android 5.0（API 21）；minSdk 和 JVM 测试不能证明全部系统/车机兼容。当前在 API 36 平板上验证了安装、主页三块布局（竖屏与横屏）、无 OTG 等待流程、无线 TCP ADB 连接与 RSA 授权、shell 命令与退出码、读取显示尺寸、scrcpy 上传启动、视频解码渲染、退出浮窗拖动与长按 3 秒退出、退出后保留连接、每设备设置持久化与隔离；另在局域网其他 adbd 设备上验证了命令执行。在 T26FL 车机上验证了无线连接、读取 `5120 × 1600`、全屏/仅左主屏/仅右副屏三种画面、触控落点（左屏点导航/主页/Dock 均正确触发车机应用）和长按退出；也验证了平板经 OTG 直连车机 USB 调试口的完整链路（系统 USB 授权、ADB 握手、server 上传、视频投屏与触控）。API 21–35 运行、多台 USB ADB 设备与 hub 选择、自定义裁切边界与缩放旋转仍待验证。历史无线结果见[2026-10-20 验证记录](docs/verification/2026-10-20-device-check.md)，不替代本次验收。
+## 第三方组件
 
-应用不提供音频、录屏、文件管理、后台常驻服务或开机自启。Manifest 申请 INTERNET，并声明可选 USB Host feature；USB 设备访问由系统单独授权。退出图标是投屏页内控件。ADB 私钥保存在应用私有目录。若 `/data/local/tmp` 不可写，会尝试共享存储上传 server，无需 root。第三方 server 的来源、校验值与许可证见[第三方声明](THIRD_PARTY_NOTICES.md)。
+| 组件 | 用途 | 许可 |
+| --- | --- | --- |
+| [scrcpy](https://github.com/Genymobile/scrcpy) server 4.0 | 车机端采集编码与控制协议 | Apache-2.0，声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) |
+| [libadb-android](https://github.com/MuntashirAkon/libadb-android) | ADB 协议实现 | GPL-3.0+ / Apache-2.0 双许可 |
+| [Bouncy Castle](https://www.bouncycastle.org/) | RSA 密钥与签名 | Bouncy Castle Licence |
+| [Conscrypt](https://github.com/google/conscrypt) | TLS | Apache-2.0 |
+
+内置的 `scrcpy-server-v4.0` 为官方原版二进制，未做修改；来源、大小与 SHA-256 校验值见[第三方声明](THIRD_PARTY_NOTICES.md)。
+
+## 许可证
+
+本仓库尚未声明开源许可证。在补充许可证之前，保留所有权利（All rights reserved）。
